@@ -22,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ title }) => {
     toggleTheme,
     triggerRefresh,
     selectedProjectId,
-    isOnline,
+    connectionState,
   } = useControlCenter();
 
   const getScreenDisplayName = (screen: ScreenId): string => {
@@ -87,11 +87,11 @@ export const Header: React.FC<HeaderProps> = ({ title }) => {
               <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-mono text-slate-400">
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${
-                    isOnline ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' : 'bg-rose-500'
+                    connectionState === 'ONLINE' ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' : 'bg-rose-500'
                   }`}
                 />
-                <span className="truncate max-w-[120px] xs:max-w-[160px]">
-                  {isOnline ? 'ORACLE ARM (14ms)' : 'DISCONNECTED'}
+                <span className="truncate max-w-[140px] xs:max-w-[180px]">
+                  {connectionState === 'ONLINE' ? 'PHASE 1 (HTTP)' : connectionState}
                 </span>
               </div>
             </div>

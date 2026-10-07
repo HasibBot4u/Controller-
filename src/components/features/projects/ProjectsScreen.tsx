@@ -23,6 +23,8 @@ export const ProjectsScreen: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectActivities, setProjectActivities] = useState<Activity[]>([]);
+  const [projectSessions, setProjectSessions] = useState<any[]>([]);
+  const [mcpServers, setMcpServers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newName, setNewName] = useState('');
@@ -32,12 +34,17 @@ export const ProjectsScreen: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
-    services.projectsApi
-      .getProjects()
-      .then((res) => {
+    Promise.all([
+      services.projectsApi.getProjects(),
+      services.sessionsApi.getSessions(),
+      services.mcpApi.getServers(),
+    ])
+      .then(([pRes, sRes, mRes]) => {
         if (isMounted) {
-          setProjects(res.data);
-          const current = res.data.find((p) => p.id === selectedProjectId) || res.data[0];
+          setProjects(pRes.data);
+          setProjectSessions(sRes.data);
+          setMcpServers(mRes.data);
+          const current = pRes.data.find((p) => p.id === selectedProjectId) || pRes.data[0];
           setSelectedProject(current || null);
         }
       })
@@ -212,10 +219,16 @@ export const ProjectsScreen: React.FC = () => {
                 <span>Claude Summary</span>
               </div>
               <div className="text-[11px] text-slate-400 space-y-1">
-                <div>Active Sessions: 1 (sess-alpha-01)</div>
-                <div>Default Model: claude-3-7-sonnet</div>
-                <div>Sandbox Cgroup: isolated</div>
-                <div>Today Tokens: 30,430</div>
+                <div>
+                  Active Sessions: {projectSessions.filter((s) => s.projectId === selectedProject.id).length}
+                </div>
+                <div>
+                  Default Model: {projectSessions.find((s) => s.projectId === selectedProject.id)?.model || 'claude-3-7-sonnet'}
+                </div>
+                <div>Sandbox: Phase 1 Mock Sandbox</div>
+                <div>
+                  Tokens: {projectSessions.filter((s) => s.projectId === selectedProject.id).reduce((sum, s) => sum + s.tokensIn + s.tokensOut, 0).toLocaleString()}
+                </div>
               </div>
             </div>
 
@@ -226,9 +239,9 @@ export const ProjectsScreen: React.FC = () => {
                 <span>MCP Summary</span>
               </div>
               <div className="text-[11px] text-slate-400 space-y-1">
-                <div>Servers Enabled: 5</div>
-                <div>Tools Available: 36</div>
-                <div>Filesystem Jail: /home/oracle/workspace</div>
+                <div>Servers Enabled: {mcpServers.filter((s) => s.enabled).length} of {mcpServers.length}</div>
+                <div>Tools Available: {mcpServers.filter((s) => s.enabled).reduce((sum, s) => sum + s.toolsCount, 0)}</div>
+                <div className="truncate">Filesystem Jail: {selectedProject.rootPath}</div>
                 <div>Transport: stdio / sse multiplex</div>
               </div>
             </div>

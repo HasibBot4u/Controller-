@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { services, ServiceContainer } from '../services/api-service.ts';
-import { PendingApproval, Activity } from '../domain/models/index.ts';
-import { RiskLevel, ApprovalStatus } from '../domain/enums/index.ts';
+import { services as defaultServices, setServiceMode, ServiceContainer, ServiceMode } from '../services/api-service.ts';
+import { PendingApproval } from '../domain/models/index.ts';
+import { ApprovalStatus } from '../domain/enums/index.ts';
 
 export type ScreenId =
   | 'home'
@@ -20,6 +20,12 @@ export type ScreenId =
   | 'admin'
   | 'settings';
 
+export type ConnectionState =
+  | 'ONLINE'
+  | 'NETWORK_OFFLINE'
+  | 'CONTROL_UNAVAILABLE'
+  | 'DEGRADED';
+
 interface ControlCenterContextType {
   currentScreen: ScreenId;
   setCurrentScreen: (screen: ScreenId) => void;
@@ -27,8 +33,8 @@ interface ControlCenterContextType {
   setSelectedActivityId: (id: string | null) => void;
   selectedProjectId: string;
   setSelectedProjectId: (id: string) => void;
-  isOnline: boolean;
-  setIsOnline: (online: boolean) => void;
+  connectionState: ConnectionState;
+  setConnectionState: (state: ConnectionState) => void;
   simulateOffline: boolean;
   setSimulateOffline: (val: boolean) => void;
   activeApproval: PendingApproval | null;
@@ -36,6 +42,8 @@ interface ControlCenterContextType {
   resolveApproval: (id: string, status: ApprovalStatus) => Promise<void>;
   closeApprovalModal: () => void;
   services: ServiceContainer;
+  serviceMode: ServiceMode;
+  switchServiceMode: (mode: ServiceMode) => void;
   refreshKey: number;
   triggerRefresh: () => void;
   theme: 'dark' | 'light';
@@ -44,20 +52,77 @@ interface ControlCenterContextType {
 
 const ControlCenterContext = createContext<ControlCenterContextType | null>(null);
 
+function parseHashLocation(): { screen: ScreenId; activityId: string | null } {
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  if (!hash) return { screen: 'home', activityId: null };
+
+  const parts = hash.split('/');
+  const validScreens: ScreenId[] = [
+    'home', 'claude', 'activities', 'jobs', 'more',
+    'projects', 'files', 'terminal', 'github', 'mcp',
+    'models', 'monitor', 'backups', 'admin', 'settings'
+  ];
+
+  const screen = validScreens.includes(parts[0] as ScreenId) ? (parts[0] as ScreenId) : 'home';
+  const activityId = parts[0] === 'activities' && parts[1] ? parts[1] : null;
+
+  return { screen, activityId };
+}
+
 export const ControlCenterProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentScreen, setCurrentScreen] = useState<ScreenId>('home');
-  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+  const initialNav = parseHashLocation();
+  const [currentScreen, setCurrentScreenState] = useState<ScreenId>(initialNav.screen);
+  const [selectedActivityId, setSelectedActivityIdState] = useState<string | null>(initialNav.activityId);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('proj-01');
-  const [isOnline, setIsOnline] = useState<boolean>(true);
+
+  const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(navigator.onLine);
   const [simulateOffline, setSimulateOffline] = useState<boolean>(false);
+  const [connectionState, setConnectionState] = useState<ConnectionState>('ONLINE');
+
+  const [serviceMode, setServiceModeState] = useState<ServiceMode>('http');
+  const [activeServices, setActiveServices] = useState<ServiceContainer>(defaultServices);
+
   const [activeApproval, setActiveApproval] = useState<PendingApproval | null>(null);
   const [approvalResolver, setApprovalResolver] = useState<((approved: boolean) => void) | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(1);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
+  // Sync hash routing for mobile navigation (Item 33)
+  const setCurrentScreen = (screen: ScreenId) => {
+    setCurrentScreenState(screen);
+    if (screen !== 'activities') {
+      setSelectedActivityIdState(null);
+      window.location.hash = `#${screen}`;
+    } else {
+      window.location.hash = selectedActivityId ? `#activities/${selectedActivityId}` : '#activities';
+    }
+  };
+
+  const setSelectedActivityId = (id: string | null) => {
+    setSelectedActivityIdState(id);
+    if (id) {
+      setCurrentScreenState('activities');
+      window.location.hash = `#activities/${id}`;
+    } else if (currentScreen === 'activities') {
+      window.location.hash = '#activities';
+    }
+  };
+
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleHashChange = () => {
+      const nav = parseHashLocation();
+      setCurrentScreenState(nav.screen);
+      setSelectedActivityIdState(nav.activityId);
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // Browser network status listeners
+  useEffect(() => {
+    const handleOnline = () => setIsBrowserOnline(true);
+    const handleOffline = () => setIsBrowserOnline(false);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -67,6 +132,22 @@ export const ControlCenterProvider: React.FC<{ children: ReactNode }> = ({ child
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Unified connection state model (Item 26)
+  useEffect(() => {
+    if (!isBrowserOnline || simulateOffline) {
+      setConnectionState('NETWORK_OFFLINE');
+    } else {
+      setConnectionState('ONLINE');
+    }
+  }, [isBrowserOnline, simulateOffline]);
+
+  const switchServiceMode = (mode: ServiceMode) => {
+    const container = setServiceMode(mode);
+    setServiceModeState(mode);
+    setActiveServices(container);
+    triggerRefresh();
+  };
 
   const triggerRefresh = () => {
     setRefreshKey((k) => k + 1);
@@ -82,27 +163,38 @@ export const ControlCenterProvider: React.FC<{ children: ReactNode }> = ({ child
     }
   };
 
-  const requestApproval = (approvalData: Omit<PendingApproval, 'schemaVersion' | 'id' | 'requestedAt' | 'status'>): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const fullApproval: PendingApproval = {
-        schemaVersion: 1,
-        id: `appr-dyn-${Date.now()}`,
-        requestedAt: new Date().toISOString(),
-        status: ApprovalStatus.PENDING,
-        ...approvalData,
-      };
-      setActiveApproval(fullApproval);
-      setApprovalResolver(() => resolve);
-    });
+  // Server-side approval request (Item 15)
+  const requestApproval = async (
+    approvalData: Omit<PendingApproval, 'schemaVersion' | 'id' | 'requestedAt' | 'status'>
+  ): Promise<boolean> => {
+    try {
+      const res = await activeServices.approvalsApi.createApproval(approvalData);
+      return new Promise((resolve) => {
+        setActiveApproval(res.data);
+        setApprovalResolver(() => resolve);
+      });
+    } catch (e) {
+      console.error('Failed to create server approval:', e);
+      // Fallback to local prompt if network fails
+      return new Promise((resolve) => {
+        const fallbackApproval: PendingApproval = {
+          schemaVersion: 1,
+          id: `appr-fb-${Date.now()}`,
+          requestedAt: new Date().toISOString(),
+          status: ApprovalStatus.PENDING,
+          ...approvalData,
+        };
+        setActiveApproval(fallbackApproval);
+        setApprovalResolver(() => resolve);
+      });
+    }
   };
 
   const resolveApproval = async (id: string, status: ApprovalStatus) => {
-    if (services.activitiesApi) {
-      try {
-        await services.activitiesApi.resolveApproval(id, status);
-      } catch (e) {
-        console.error('Error resolving approval in adapter:', e);
-      }
+    try {
+      await activeServices.approvalsApi.resolveApproval(id, status);
+    } catch (e) {
+      console.error('Error resolving approval on server:', e);
     }
 
     if (approvalResolver) {
@@ -121,8 +213,6 @@ export const ControlCenterProvider: React.FC<{ children: ReactNode }> = ({ child
     setActiveApproval(null);
   };
 
-  const effectiveOnline = isOnline && !simulateOffline;
-
   return (
     <ControlCenterContext.Provider
       value={{
@@ -132,15 +222,17 @@ export const ControlCenterProvider: React.FC<{ children: ReactNode }> = ({ child
         setSelectedActivityId,
         selectedProjectId,
         setSelectedProjectId,
-        isOnline: effectiveOnline,
-        setIsOnline,
+        connectionState,
+        setConnectionState,
         simulateOffline,
         setSimulateOffline,
         activeApproval,
         requestApproval,
         resolveApproval,
         closeApprovalModal,
-        services,
+        services: activeServices,
+        serviceMode,
+        switchServiceMode,
         refreshKey,
         triggerRefresh,
         theme,

@@ -14,6 +14,7 @@ import {
   MonitoringApi,
   BackupApi,
   AdminApi,
+  ApprovalsApi,
   ApiResponse
 } from '../../domain/contracts/api-contracts.ts';
 import {
@@ -699,3 +700,37 @@ export class MockAdminApi implements AdminApi {
     });
   }
 }
+
+export class MockApprovalsApi implements ApprovalsApi {
+  constructor(private approvalRepo: InMemoryApprovalRepository) {}
+
+  async getApprovals(activityId?: string): Promise<ApiResponse<PendingApproval[]>> {
+    const list = await this.approvalRepo.findPending(activityId);
+    return createResponse(list);
+  }
+
+  async getApproval(id: string): Promise<ApiResponse<PendingApproval>> {
+    const a = await this.approvalRepo.findById(id);
+    if (!a) throw new Error(`Approval ${id} not found`);
+    return createResponse(a);
+  }
+
+  async createApproval(
+    approval: Omit<PendingApproval, 'schemaVersion' | 'id' | 'requestedAt' | 'status'>
+  ): Promise<ApiResponse<PendingApproval>> {
+    const created = await this.approvalRepo.create({
+      ...approval,
+      id: `appr-${Date.now().toString().slice(-4)}`,
+      status: ApprovalStatus.PENDING,
+      requestedAt: new Date().toISOString(),
+    });
+    return createResponse(created);
+  }
+
+  async resolveApproval(id: string, status: ApprovalStatus): Promise<ApiResponse<PendingApproval>> {
+    const resolved = await this.approvalRepo.resolve(id, status, 'demo-operator');
+    if (!resolved) throw new Error(`Approval ${id} not found`);
+    return createResponse(resolved);
+  }
+}
+

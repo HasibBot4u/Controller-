@@ -114,9 +114,10 @@ export class InMemoryEventRepository implements EventRepository {
       .sort((a, b) => a.sequence - b.sequence);
   }
 
-  async append(event: Omit<ActivityEvent, 'schemaVersion' | 'sequence'>): Promise<ActivityEvent> {
+  async append(event: Omit<ActivityEvent, 'schemaVersion' | 'sequence' | 'id'> & { id?: string }): Promise<ActivityEvent> {
     const latestSeq = await this.getLatestSequence(event.activityId);
     const newEvent: ActivityEvent = {
+      id: event.id || `evt-${Date.now()}-${latestSeq + 1}`,
       ...event,
       schemaVersion: 1,
       sequence: latestSeq + 1,

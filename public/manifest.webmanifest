@@ -1,0 +1,24 @@
+{
+  "name": "Claude Cloud Control Center",
+  "short_name": "Claude Control",
+  "description": "Mobile-first thin-client remote control plane for cloud-hosted development workstations.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192' fill='none'%3E%3Crect width='192' height='192' rx='36' fill='%23090d16'/%3E%3Ccircle cx='96' cy='96' r='48' stroke='%23f59e0b' stroke-width='12'/%3E%3Ccircle cx='96' cy='96' r='16' fill='%2310b981'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='none'%3E%3Crect width='512' height='512' rx='96' fill='%23090d16'/%3E%3Ccircle cx='256' cy='256' r='128' stroke='%23f59e0b' stroke-width='32'/%3E%3Ccircle cx='256' cy='256' r='40' fill='%2310b981'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

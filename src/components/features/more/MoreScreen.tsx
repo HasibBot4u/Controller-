@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useControlCenter, ScreenId } from '../../../context/ControlCenterContext.tsx';
 import {
   FolderGit2,
@@ -13,8 +13,6 @@ import {
   Settings,
   Search,
   ArrowRight,
-  Server,
-  Layers,
 } from 'lucide-react';
 
 interface ModuleItem {
@@ -27,8 +25,34 @@ interface ModuleItem {
 }
 
 export const MoreScreen: React.FC = () => {
-  const { setCurrentScreen } = useControlCenter();
+  const { setCurrentScreen, services, refreshKey } = useControlCenter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeProjectsCount, setActiveProjectsCount] = useState<number | null>(null);
+  const [enabledMcpCount, setEnabledMcpCount] = useState<number | null>(null);
+  const [healthStatus, setHealthStatus] = useState<string>('Checking...');
+  const [backupVerified, setBackupVerified] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    Promise.all([
+      services.projectsApi.getProjects(),
+      services.mcpApi.getServers(),
+      services.healthApi.getHealth(),
+      services.backupApi.getStatus(),
+    ]).then(([pRes, mRes, hRes, bRes]) => {
+      if (!isMounted) return;
+      setActiveProjectsCount(pRes.data.length);
+      setEnabledMcpCount(mRes.data.filter((s) => s.enabled).length);
+      setHealthStatus(hRes.data.status);
+      setBackupVerified(bRes.data.checksumState === 'VERIFIED');
+    }).catch(() => {
+      if (isMounted) setHealthStatus('DEGRADED');
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [services, refreshKey]);
 
   const modules: ModuleItem[] = [
     {
@@ -37,7 +61,7 @@ export const MoreScreen: React.FC = () => {
       description: 'Workstation repositories, git branches, and workspace directories',
       icon: FolderGit2,
       tag: 'Core',
-      badge: '3 Active',
+      badge: activeProjectsCount !== null ? `${activeProjectsCount} Active` : 'Projects',
     },
     {
       id: 'files',
@@ -45,15 +69,15 @@ export const MoreScreen: React.FC = () => {
       description: 'Remote filesystem tree browser, code editor, and file operations',
       icon: FileCode,
       tag: 'Workspace',
-      badge: 'Jail: /workspace',
+      badge: 'Remote Workspace',
     },
     {
       id: 'terminal',
       title: 'Terminal',
-      description: 'Interactive remote PTY console connected to Oracle Linux cgroup',
+      description: 'Interactive remote PTY console connected to simulated sandbox',
       icon: Terminal,
       tag: 'Workspace',
-      badge: 'Connected',
+      badge: 'Phase 1 Mock',
     },
     {
       id: 'github',
@@ -61,7 +85,7 @@ export const MoreScreen: React.FC = () => {
       description: 'Repository sync status, pull requests, issues, and CI test status',
       icon: Github,
       tag: 'Integration',
-      badge: 'CI Running',
+      badge: 'Mock Proxy',
     },
     {
       id: 'mcp',
@@ -69,7 +93,7 @@ export const MoreScreen: React.FC = () => {
       description: 'Model Context Protocol servers, stdio/sse transports, and tools',
       icon: Cpu,
       tag: 'Protocol',
-      badge: '5 Enabled',
+      badge: enabledMcpCount !== null ? `${enabledMcpCount} Enabled` : 'MCP Servers',
     },
     {
       id: 'models',
@@ -77,7 +101,7 @@ export const MoreScreen: React.FC = () => {
       description: 'Multi-provider AI routing matrix (Anthropic, LiteLLM, Gemini, OpenRouter)',
       icon: Sparkles,
       tag: 'Routing',
-      badge: '4 Providers',
+      badge: 'Configurable',
     },
     {
       id: 'monitor',
@@ -85,31 +109,31 @@ export const MoreScreen: React.FC = () => {
       description: 'Host CPU, RAM, NVMe metrics and degraded service health diagnostics',
       icon: Activity,
       tag: 'Observability',
-      badge: 'Healthy',
+      badge: healthStatus,
     },
     {
       id: 'backups',
       title: 'Backups & Snapshots',
-      description: 'Oracle Object Storage differential snapshots and restore verifications',
+      description: 'Differential workspace snapshots and restore verifications',
       icon: HardDrive,
       tag: 'Continuity',
-      badge: 'Verified',
+      badge: backupVerified ? 'Verified' : 'Snapshots',
     },
     {
       id: 'admin',
       title: 'Admin & Infrastructure',
-      description: 'Cloud VM control, process supervisor, security audit, and permissions',
+      description: 'Host control, process supervisor, security audit, and permissions',
       icon: Shield,
       tag: 'Control',
-      badge: 'Privileged',
+      badge: 'Phase 1 Preview',
     },
     {
       id: 'settings',
       title: 'Settings',
-      description: 'Theme preferences, adapter configuration, and offline simulation mode',
+      description: 'Theme preferences, service adapter mode, and offline simulation',
       icon: Settings,
       tag: 'Client',
-      badge: 'Local State',
+      badge: 'Preferences',
     },
   ];
 
@@ -152,10 +176,11 @@ export const MoreScreen: React.FC = () => {
         {filtered.map((item) => {
           const Icon = item.icon;
           return (
-            <div
+            <button
+              type="button"
               key={item.id}
               onClick={() => setCurrentScreen(item.id)}
-              className="p-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800/60 border border-slate-800/90 transition-all cursor-pointer flex items-start justify-between gap-3 group"
+              className="p-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800/60 border border-slate-800/90 transition-all cursor-pointer flex items-start justify-between gap-3 group text-left w-full"
             >
               <div className="flex items-start gap-3 min-w-0">
                 <div className="p-2.5 rounded-xl bg-slate-800 group-hover:bg-amber-500/10 border border-slate-700/60 group-hover:border-amber-500/40 text-slate-300 group-hover:text-amber-400 transition-colors flex-shrink-0">
@@ -184,7 +209,7 @@ export const MoreScreen: React.FC = () => {
                 )}
                 <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-amber-400 transition-colors" />
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

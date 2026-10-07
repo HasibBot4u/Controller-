@@ -20,7 +20,7 @@ export interface ActivityRepository {
 
 export interface EventRepository {
   findByActivityId(activityId: string): Promise<ActivityEvent[]>;
-  append(event: Omit<ActivityEvent, 'schemaVersion' | 'sequence'>): Promise<ActivityEvent>;
+  append(event: Omit<ActivityEvent, 'schemaVersion' | 'sequence' | 'id'> & { id?: string }): Promise<ActivityEvent>;
   getLatestSequence(activityId: string): Promise<number>;
 }
 

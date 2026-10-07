@@ -134,6 +134,13 @@ export interface BackupApi {
   testRestore(): Promise<ApiResponse<{ restored: boolean; message: string }>>;
 }
 
+export interface ApprovalsApi {
+  getApprovals(activityId?: string): Promise<ApiResponse<PendingApproval[]>>;
+  getApproval(id: string): Promise<ApiResponse<PendingApproval>>;
+  createApproval(approval: Omit<PendingApproval, 'schemaVersion' | 'id' | 'requestedAt' | 'status'>): Promise<ApiResponse<PendingApproval>>;
+  resolveApproval(id: string, status: ApprovalStatus): Promise<ApiResponse<PendingApproval>>;
+}
+
 export interface AdminApi {
   rebootServer(riskLevel: RiskLevel): Promise<ApiResponse<{ scheduled: boolean; message: string }>>;
   restartService(serviceName: string): Promise<ApiResponse<{ restarted: boolean }>>;

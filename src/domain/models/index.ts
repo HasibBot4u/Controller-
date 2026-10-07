@@ -283,4 +283,33 @@ export interface AppError {
   service: string;
   timestamp: string;
   requestId: string;
+  details?: Record<string, unknown>;
 }
+
+export interface AuthPrincipal {
+  id: string;
+  role: 'OWNER' | 'OPERATOR' | 'VIEWER';
+  authMode: 'PHASE1_DEMO';
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  requestId: string;
+  timestamp: string;
+  durationMs?: number;
+}
+
+export interface ApiError {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    retryable: boolean;
+    service: string;
+    details?: Record<string, unknown>;
+  };
+  requestId: string;
+  timestamp: string;
+}
+

@@ -36,7 +36,7 @@ interface ActivityDetailViewProps {
 }
 
 export const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ activityId, onBack }) => {
-  const { services, refreshKey, triggerRefresh, requestApproval } = useControlCenter();
+  const { services, refreshKey, triggerRefresh, requestApproval, setSelectedActivityId } = useControlCenter();
   const [activity, setActivity] = useState<Activity | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
@@ -158,23 +158,27 @@ export const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ activity
   const handleFork = async () => {
     setIsExecutingAction(true);
     try {
-      await services.activitiesApi.forkActivity(activity.id);
+      const res = await services.activitiesApi.forkActivity(activity.id);
+      setSelectedActivityId(res.data.id);
       triggerRefresh();
+    } catch (e) {
+      console.error(e);
     } finally {
       setIsExecutingAction(false);
     }
   };
 
   const handleRewind = async (chkId: string) => {
+    const targetChk = checkpoints.find((c) => c.id === chkId);
     const approved = await requestApproval({
       activityId: activity.id,
       projectId: activity.projectId,
       riskLevel: RiskLevel.STRONG_CONFIRM,
       actionType: 'ACTIVITY_REWIND',
       title: `Rewind to Checkpoint ${chkId}`,
-      description: 'Reset working tree and replay timeline up to this snapshot point.',
-      commandOrDiff: `git checkout ${chkId} --force`,
-      parameters: { checkpointId: chkId },
+      description: targetChk?.description || 'Reset workspace state to checkpoint snapshot',
+      commandOrDiff: `Operation: RESTORE_CHECKPOINT\nCheckpoint ID: ${chkId}\nTarget: Project workspace (${activity.projectId})\nGit Base Commit: ${activity.gitBaseCommit}`,
+      parameters: { checkpointId: chkId, gitBase: activity.gitBaseCommit },
     });
     if (approved) {
       await services.activitiesApi.rewindActivity(activity.id, chkId);
@@ -199,18 +203,18 @@ export const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ activity
         </div>
       </div>
 
-      {/* Continuity Resilience Card */}
+      {/* Continuity Resilience Card - Phase 1 Preview (Item 12) */}
       <div className="p-3.5 rounded-xl bg-slate-900/90 border border-cyan-500/30 text-xs space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 font-mono font-semibold text-cyan-300">
             <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-            <span>REMOTE CONTINUITY GUARANTEE</span>
+            <span>CONTINUITY MODEL — PHASE 1 PREVIEW</span>
           </div>
           <span className="text-[10px] font-mono text-slate-400">Schema v{activity.schemaVersion}</span>
         </div>
         <p className="text-slate-300 text-[11px] leading-relaxed">
-          The remote execution daemon on Oracle Linux persists all state independent of your device.
-          Closing this browser, switching to airplane mode, or restarting your phone will not cancel or drop this activity.
+          State is persisted within the server memory journal and periodic checkpoints.
+          In Phase 1, closing the mobile browser or reconnecting re-synchronizes the activity timeline from the server-side event journal.
         </p>
       </div>
 

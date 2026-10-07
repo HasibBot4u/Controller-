@@ -1,11 +1,11 @@
 import React from 'react';
-import { WifiOff, RefreshCw } from 'lucide-react';
+import { WifiOff, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useControlCenter } from '../../context/ControlCenterContext.tsx';
 
 export const OfflineBanner: React.FC = () => {
-  const { isOnline, triggerRefresh } = useControlCenter();
+  const { connectionState, triggerRefresh } = useControlCenter();
 
-  if (isOnline) return null;
+  if (connectionState === 'ONLINE') return null;
 
   return (
     <div
@@ -15,14 +15,14 @@ export const OfflineBanner: React.FC = () => {
       <div className="flex items-start sm:items-center gap-2.5">
         <WifiOff className="w-5 h-5 flex-shrink-0 text-slate-950 mt-0.5 sm:mt-0 animate-pulse" />
         <div>
-          <div className="font-bold tracking-wide uppercase flex items-center gap-1.5">
-            <span>OFFLINE / DISCONNECTED</span>
-            <span className="text-[10px] font-mono bg-slate-950 text-amber-300 px-1.5 py-0.2 rounded font-semibold">
-              REMOTE VM STILL EXECUTING
+          <div className="font-bold tracking-wide uppercase flex items-center gap-1.5 font-mono">
+            <span>CONTROL CONNECTION LOST</span>
+            <span className="text-[10px] font-mono bg-slate-950 text-amber-300 px-1.5 py-0.5 rounded font-semibold">
+              {connectionState}
             </span>
           </div>
-          <p className="text-[11px] sm:text-xs text-slate-900 leading-tight mt-0.5">
-            Control connection unavailable. Remote execution state will be checked after reconnection.
+          <p className="text-[11px] sm:text-xs text-slate-900 leading-tight mt-0.5 font-sans">
+            Remote execution status will be checked after reconnection.
           </p>
         </div>
       </div>

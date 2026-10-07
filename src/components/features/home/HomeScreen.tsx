@@ -90,11 +90,11 @@ export const HomeScreen: React.FC = () => {
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
           <div>
             <div className="font-mono font-semibold text-slate-200 flex items-center gap-2">
-              <span>Oracle Linux Workstation (Cloud VM)</span>
+              <span>Remote Workstation Host (Phase 1 Preview)</span>
               <span className="text-[10px] text-emerald-400 font-normal">Active</span>
             </div>
             <p className="text-[11px] text-slate-400 hidden xs:block">
-              Phone is thin client • Zero local workload execution
+              Phone is thin client • Zero local workload execution • Persistence: IN-MEMORY
             </p>
           </div>
         </div>
