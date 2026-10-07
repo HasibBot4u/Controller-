@@ -80,7 +80,7 @@ export const ActivitiesScreen: React.FC = () => {
 
     try {
       const res = await services.activitiesApi.createActivity({
-        projectId: selectedProjectId,
+        projectId: selectedProjectId || 'proj-01',
         title: newTitle,
         description: newDesc,
         model: 'claude-3-7-sonnet',
@@ -204,7 +204,7 @@ export const ActivitiesScreen: React.FC = () => {
                   <span>{act.filesChangedCount} files changed</span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-400">
-                  <span>${act.estimatedCost.toFixed(2)}</span>
+                  <span>${(act.estimatedCost ?? 0).toFixed(2)}</span>
                   <span>•</span>
                   <span>
                     {new Date(act.updatedAt).toLocaleTimeString([], {

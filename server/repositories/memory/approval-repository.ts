@@ -6,7 +6,7 @@ import { DEMO_APPROVALS } from '../../adapters/mock/mock-data.ts';
 export class MemoryApprovalRepository implements ApprovalRepository {
   private approvals: Map<string, PendingApproval> = new Map();
 
-  constructor(initialData: PendingApproval[] = DEMO_APPROVALS) {
+  constructor(initialData: PendingApproval[] = []) {
     initialData.forEach((a) => this.approvals.set(a.id, { ...a }));
   }
 

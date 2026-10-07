@@ -24,14 +24,25 @@ export function validateRelativeFilePath(rawPath: string): string {
     throw new FileSafetyError('Path contains null bytes');
   }
 
-  // Reject URL encoded traversal attacks
-  const decoded = decodeURIComponent(rawPath);
+  // Reject URL encoded traversal attacks & catch decodeURIComponent failures
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawPath);
+  } catch (_e) {
+    throw new FileSafetyError('Malformed percent encoding in file path');
+  }
+
+  // Reject null bytes inside decoded string as well
+  if (decoded.includes('\0')) {
+    throw new FileSafetyError('Path contains null bytes');
+  }
+
   if (decoded.includes('..') || rawPath.includes('..')) {
     throw new FileSafetyError('Directory traversal sequences (..) are forbidden');
   }
 
   // Reject leading slashes or Windows drive letters
-  if (decoded.startsWith('/') || decoded.startsWith('\\') || /^[a-zA-Z]:/.test(decoded)) {
+  if (decoded.startsWith('/') || decoded.startsWith('\\') || /^[a-zA-Z]:/.test(decoded) || /^[a-zA-Z]:/.test(rawPath)) {
     throw new FileSafetyError('Absolute paths are forbidden; path must be project-relative');
   }
 

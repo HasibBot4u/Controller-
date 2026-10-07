@@ -35,7 +35,8 @@ import {
   PendingApproval,
   Checkpoint,
   SystemServiceStatus,
-  ServerResourceSummary
+  ServerResourceSummary,
+  HealthStatusResponse,
 } from '../../domain/models/index.ts';
 import { ActivityStatus, ApprovalStatus, RiskLevel, HealthStatus, EventType } from '../../domain/enums/index.ts';
 import {
@@ -71,16 +72,20 @@ function createResponse<T>(data: T, durationMs = 25): ApiResponse<T> {
 }
 
 export class MockHealthApi implements HealthApi {
-  async getHealth(): Promise<ApiResponse<{
-    status: 'HEALTHY' | 'DEGRADED' | 'UNAVAILABLE';
-    version: string;
-    uptime: number;
-    services: SystemServiceStatus[];
-  }>> {
+  async getHealth(): Promise<ApiResponse<HealthStatusResponse>> {
     return createResponse({
-      status: 'HEALTHY',
-      version: '1.0.0-phase1-preview',
-      uptime: INITIAL_RESOURCE_SUMMARY.uptimeSeconds,
+      controlPlane: {
+        status: HealthStatus.HEALTHY,
+        version: '1.0.0-phase1-preview',
+        uptimeSeconds: INITIAL_RESOURCE_SUMMARY.uptimeSeconds || 120,
+      },
+      executionBackend: {
+        status: HealthStatus.DEGRADED,
+        message: 'Mock execution host simulated',
+      },
+      dataMode: 'DEMO',
+      persistence: 'IN_MEMORY',
+      phase: 'PHASE_1',
       services: [...INITIAL_SYSTEM_SERVICES],
     });
   }
@@ -353,33 +358,6 @@ export class MockActivitiesApi implements ActivitiesApi {
     });
     return createResponse(updated!);
   }
-
-  async resolveApproval(id: string, status: ApprovalStatus): Promise<ApiResponse<PendingApproval>> {
-    const resolved = await this.approvalRepo.resolve(id, status, 'mobile-operator');
-    if (!resolved) throw new Error(`Approval ${id} not found`);
-
-    if (resolved.activityId) {
-      await this.eventRepo.append({
-        id: `evt-${Date.now()}`,
-        activityId: resolved.activityId,
-        type: EventType.APPROVAL_RESOLVED,
-        timestamp: new Date().toISOString(),
-        payload: { approvalId: id, status, actionType: resolved.actionType },
-      });
-
-      // If approved, update activity status to RUNNING if it was waiting
-      const act = await this.activityRepo.findById(resolved.activityId);
-      if (act && act.status === ActivityStatus.WAITING_APPROVAL && status === ApprovalStatus.APPROVED) {
-        await this.activityRepo.update(act.id, {
-          status: ActivityStatus.RUNNING,
-          blocker: null,
-          currentAction: `Executing authorized action: ${resolved.actionType}`,
-        });
-      }
-    }
-
-    return createResponse(resolved);
-  }
 }
 
 export class MockSessionsApi implements SessionsApi {
@@ -433,7 +411,7 @@ export class MockFilesApi implements FilesApi {
   }
 
   async getFiles(projectId: string, directoryPath?: string): Promise<ApiResponse<FileItem[]>> {
-    const items = this.filesByProject.get(projectId) || this.filesByProject.get('proj-01') || [];
+    const items = this.filesByProject.get(projectId) || [];
     if (!directoryPath || directoryPath === '/' || directoryPath === '.') {
       return createResponse(items);
     }
@@ -442,22 +420,21 @@ export class MockFilesApi implements FilesApi {
   }
 
   async getFileContent(projectId: string, filePath: string): Promise<ApiResponse<FileItem>> {
-    const items = this.filesByProject.get(projectId) || this.filesByProject.get('proj-01') || [];
+    const items = this.filesByProject.get(projectId) || [];
     const found = items.find((f) => f.path === filePath);
     if (!found) throw new Error(`File ${filePath} not found`);
     return createResponse(found);
   }
 
-  async saveFileContent(projectId: string, filePath: string, content: string): Promise<ApiResponse<{ success: boolean; path: string; isModified: boolean }>> {
-    const items = this.filesByProject.get(projectId) || this.filesByProject.get('proj-01') || [];
+  async saveFileContent(projectId: string, filePath: string, content: string): Promise<ApiResponse<FileItem>> {
+    const items = this.filesByProject.get(projectId) || [];
     const item = items.find((f) => f.path === filePath);
-    if (item) {
-      item.content = content;
-      item.isModified = true;
-      item.updatedAt = new Date().toISOString();
-      item.sizeBytes = content.length;
-    }
-    return createResponse({ success: true, path: filePath, isModified: true });
+    if (!item) throw new Error(`File ${filePath} not found`);
+    item.content = content;
+    item.isModified = true;
+    item.updatedAt = new Date().toISOString();
+    item.sizeBytes = content.length;
+    return createResponse(item);
   }
 
   async createFile(projectId: string, filePath: string, isDirectory: boolean): Promise<ApiResponse<FileItem>> {
@@ -479,22 +456,21 @@ export class MockFilesApi implements FilesApi {
     return createResponse(newItem);
   }
 
-  async renameFile(projectId: string, oldPath: string, newPath: string): Promise<ApiResponse<{ success: boolean; newPath: string }>> {
+  async renameFile(projectId: string, oldPath: string, newPath: string): Promise<ApiResponse<FileItem>> {
     const items = this.filesByProject.get(projectId) || [];
     const item = items.find((f) => f.path === oldPath);
-    if (item) {
-      item.path = newPath;
-      item.name = newPath.split('/').pop() || newPath;
-      item.updatedAt = new Date().toISOString();
-    }
-    return createResponse({ success: true, newPath });
+    if (!item) throw new Error(`File ${oldPath} not found`);
+    item.path = newPath;
+    item.name = newPath.split('/').pop() || newPath;
+    item.updatedAt = new Date().toISOString();
+    return createResponse(item);
   }
 
-  async deleteFile(projectId: string, filePath: string): Promise<ApiResponse<{ success: boolean }>> {
+  async deleteFile(projectId: string, filePath: string): Promise<ApiResponse<{ success: boolean; deletedPath: string }>> {
     const items = this.filesByProject.get(projectId) || [];
     const remaining = items.filter((f) => f.path !== filePath && !f.path.startsWith(`${filePath}/`));
     this.filesByProject.set(projectId, remaining);
-    return createResponse({ success: true });
+    return createResponse({ success: true, deletedPath: filePath });
   }
 }
 

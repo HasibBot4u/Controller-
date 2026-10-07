@@ -187,7 +187,7 @@ export const ClaudeScreen: React.FC = () => {
               Active Project:
             </label>
             <select
-              value={selectedProjectId}
+              value={selectedProjectId || ''}
               onChange={(e) => setSelectedProjectId(e.target.value)}
               className="w-full bg-black/50 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
             >
@@ -294,11 +294,11 @@ export const ClaudeScreen: React.FC = () => {
         {session && (
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800 text-[11px] text-slate-400">
             <div className="flex items-center gap-3">
-              <span>Context Usage: {session.contextUsagePercent}%</span>
+              <span>Context Usage: {session.contextUsagePercent ?? 0}%</span>
               <span>•</span>
-              <span>Tokens: {session.tokensIn.toLocaleString()} in / {session.tokensOut.toLocaleString()} out</span>
+              <span>Tokens: {(session.tokensIn ?? 0).toLocaleString()} in / {(session.tokensOut ?? 0).toLocaleString()} out</span>
               <span>•</span>
-              <span className="text-emerald-400">Cost: ${session.cost.toFixed(3)}</span>
+              <span className="text-emerald-400">Cost: ${(session.cost ?? 0).toFixed(3)}</span>
             </div>
             <span className="text-slate-500 text-[10px]">Phase 1 Mock Execution</span>
           </div>

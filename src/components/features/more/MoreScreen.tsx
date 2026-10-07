@@ -43,7 +43,7 @@ export const MoreScreen: React.FC = () => {
       if (!isMounted) return;
       setActiveProjectsCount(pRes.data.length);
       setEnabledMcpCount(mRes.data.filter((s) => s.enabled).length);
-      setHealthStatus(hRes.data.status);
+      setHealthStatus(hRes.data.controlPlane?.status || 'HEALTHY');
       setBackupVerified(bRes.data.checksumState === 'VERIFIED');
     }).catch(() => {
       if (isMounted) setHealthStatus('DEGRADED');

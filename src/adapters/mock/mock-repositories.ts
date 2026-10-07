@@ -27,7 +27,7 @@ import {
 export class InMemoryProjectRepository implements ProjectRepository {
   private projects: Map<string, Project> = new Map();
 
-  constructor(initialData: Project[] = INITIAL_PROJECTS) {
+  constructor(initialData: Project[] = []) {
     initialData.forEach((p) => this.projects.set(p.id, { ...p }));
   }
 
@@ -61,7 +61,7 @@ export class InMemoryProjectRepository implements ProjectRepository {
 export class InMemoryActivityRepository implements ActivityRepository {
   private activities: Map<string, Activity> = new Map();
 
-  constructor(initialData: Activity[] = INITIAL_ACTIVITIES) {
+  constructor(initialData: Activity[] = []) {
     initialData.forEach((a) => this.activities.set(a.id, { ...a }));
   }
 
@@ -104,7 +104,7 @@ export class InMemoryActivityRepository implements ActivityRepository {
 export class InMemoryEventRepository implements EventRepository {
   private events: ActivityEvent[] = [];
 
-  constructor(initialData: ActivityEvent[] = INITIAL_EVENTS) {
+  constructor(initialData: ActivityEvent[] = []) {
     this.events = initialData.map((e) => ({ ...e }));
   }
 
@@ -137,7 +137,7 @@ export class InMemoryEventRepository implements EventRepository {
 export class InMemoryCheckpointRepository implements CheckpointRepository {
   private checkpoints: Map<string, Checkpoint> = new Map();
 
-  constructor(initialData: Checkpoint[] = INITIAL_CHECKPOINTS) {
+  constructor(initialData: Checkpoint[] = []) {
     initialData.forEach((c) => this.checkpoints.set(c.id, { ...c }));
   }
 
@@ -160,7 +160,7 @@ export class InMemoryCheckpointRepository implements CheckpointRepository {
 export class InMemoryApprovalRepository implements ApprovalRepository {
   private approvals: Map<string, PendingApproval> = new Map();
 
-  constructor(initialData: PendingApproval[] = INITIAL_APPROVALS) {
+  constructor(initialData: PendingApproval[] = []) {
     initialData.forEach((a) => this.approvals.set(a.id, { ...a }));
   }
 
@@ -200,7 +200,7 @@ export class InMemoryApprovalRepository implements ApprovalRepository {
 export class InMemorySessionRepository implements SessionRepository {
   private sessions: Map<string, ClaudeSession> = new Map();
 
-  constructor(initialData: ClaudeSession[] = INITIAL_SESSIONS) {
+  constructor(initialData: ClaudeSession[] = []) {
     initialData.forEach((s) => this.sessions.set(s.id, { ...s }));
   }
 

@@ -5,7 +5,7 @@ import { DEMO_PROJECTS } from '../../adapters/mock/mock-data.ts';
 export class MemoryProjectRepository implements ProjectRepository {
   private projects: Map<string, Project> = new Map();
 
-  constructor(initialData: Project[] = DEMO_PROJECTS) {
+  constructor(initialData: Project[] = []) {
     initialData.forEach((p) => this.projects.set(p.id, { ...p }));
   }
 

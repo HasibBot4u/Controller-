@@ -36,17 +36,13 @@ import {
   SystemServiceStatus,
   ServerResourceSummary,
   ApiResponse,
+  HealthStatusResponse,
 } from '../../domain/models/index.ts';
 import { ApprovalStatus, RiskLevel } from '../../domain/enums/index.ts';
 import { requestJson } from './http-client.ts';
 
 export class HttpHealthApi implements HealthApi {
-  async getHealth(): Promise<ApiResponse<{
-    status: 'HEALTHY' | 'DEGRADED' | 'UNAVAILABLE';
-    version: string;
-    uptime: number;
-    services: SystemServiceStatus[];
-  }>> {
+  async getHealth(): Promise<ApiResponse<HealthStatusResponse>> {
     return requestJson('/health');
   }
 }
@@ -140,13 +136,6 @@ export class HttpActivitiesApi implements ActivitiesApi {
       body: JSON.stringify({ checkpointId }),
     });
   }
-
-  async resolveApproval(id: string, status: ApprovalStatus): Promise<ApiResponse<PendingApproval>> {
-    return requestJson(`/approvals/${encodeURIComponent(id)}/resolve`, {
-      method: 'POST',
-      body: JSON.stringify({ status }),
-    });
-  }
 }
 
 export class HttpSessionsApi implements SessionsApi {
@@ -201,17 +190,11 @@ export class HttpFilesApi implements FilesApi {
     projectId: string,
     filePath: string,
     content: string
-  ): Promise<ApiResponse<{ success: boolean; path: string; isModified: boolean }>> {
-    await requestJson(`/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(filePath)}`, {
+  ): Promise<ApiResponse<FileItem>> {
+    return requestJson(`/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(filePath)}`, {
       method: 'PATCH',
       body: JSON.stringify({ content }),
     });
-    return {
-      success: true,
-      data: { success: true, path: filePath, isModified: true },
-      requestId: 'client-sync',
-      timestamp: new Date().toISOString(),
-    };
   }
 
   async createFile(projectId: string, filePath: string, isDirectory: boolean): Promise<ApiResponse<FileItem>> {
@@ -221,20 +204,14 @@ export class HttpFilesApi implements FilesApi {
     });
   }
 
-  async renameFile(projectId: string, oldPath: string, newPath: string): Promise<ApiResponse<{ success: boolean; newPath: string }>> {
-    await requestJson(`/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(oldPath)}`, {
+  async renameFile(projectId: string, oldPath: string, newPath: string): Promise<ApiResponse<FileItem>> {
+    return requestJson(`/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(oldPath)}`, {
       method: 'PATCH',
       body: JSON.stringify({ newPath }),
     });
-    return {
-      success: true,
-      data: { success: true, newPath },
-      requestId: 'client-sync',
-      timestamp: new Date().toISOString(),
-    };
   }
 
-  async deleteFile(projectId: string, filePath: string): Promise<ApiResponse<{ success: boolean }>> {
+  async deleteFile(projectId: string, filePath: string): Promise<ApiResponse<{ success: boolean; deletedPath: string }>> {
     return requestJson(`/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(filePath)}`, {
       method: 'DELETE',
     });
@@ -243,67 +220,41 @@ export class HttpFilesApi implements FilesApi {
 
 export class HttpTerminalApi implements TerminalApi {
   async createSession(options?: { cols?: number; rows?: number; cwd?: string }): Promise<ApiResponse<TerminalSession>> {
-    return {
-      success: true,
-      data: {
-        sessionId: 'term-demo-01',
-        status: 'CONNECTED',
-        pty: '/dev/pts/3 (Simulated)',
-        cols: options?.cols || 80,
-        rows: options?.rows || 24,
-        cwd: options?.cwd || '/home/demo/workspace',
-        connectedAt: new Date().toISOString(),
-      },
-      requestId: 'term-init',
-      timestamp: new Date().toISOString(),
-    };
+    return requestJson('/terminal/session', {
+      method: 'POST',
+      body: JSON.stringify(options || {}),
+    });
   }
 
   async sendInput(sessionId: string, input: string): Promise<ApiResponse<{ acknowledged: boolean }>> {
-    return {
-      success: true,
-      data: { acknowledged: true },
-      requestId: 'term-input',
-      timestamp: new Date().toISOString(),
-    };
+    return requestJson('/terminal/input', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, input }),
+    });
   }
 
   async getOutput(sessionId: string, sinceSequence = 0): Promise<ApiResponse<TerminalOutput[]>> {
-    return {
-      success: true,
-      data: [
-        {
-          sessionId,
-          sequence: 1,
-          data: `\x1b[32m[demo@phase1-host]\x1b[0m \x1b[90m# Remote terminal connected to server-side mock layer\x1b[0m\r\n`,
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      requestId: 'term-output',
-      timestamp: new Date().toISOString(),
-    };
+    return requestJson(`/terminal/${encodeURIComponent(sessionId)}/output?since=${sinceSequence}`);
   }
 
   async resize(sessionId: string, cols: number, rows: number): Promise<ApiResponse<{ cols: number; rows: number }>> {
-    return {
-      success: true,
-      data: { cols, rows },
-      requestId: 'term-resize',
-      timestamp: new Date().toISOString(),
-    };
+    return requestJson(`/terminal/${encodeURIComponent(sessionId)}/resize`, {
+      method: 'POST',
+      body: JSON.stringify({ cols, rows }),
+    });
   }
 
   async reconnect(sessionId: string): Promise<ApiResponse<TerminalSession>> {
-    return this.createSession();
+    return requestJson('/terminal/session', {
+      method: 'POST',
+      body: JSON.stringify({ reconnectSessionId: sessionId }),
+    });
   }
 
   async closeSession(sessionId: string): Promise<ApiResponse<{ closed: boolean }>> {
-    return {
-      success: true,
-      data: { closed: true },
-      requestId: 'term-close',
-      timestamp: new Date().toISOString(),
-    };
+    return requestJson(`/terminal/${encodeURIComponent(sessionId)}/close`, {
+      method: 'POST',
+    });
   }
 }
 

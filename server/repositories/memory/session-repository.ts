@@ -5,7 +5,7 @@ import { DEMO_SESSIONS } from '../../adapters/mock/mock-data.ts';
 export class MemorySessionRepository implements SessionRepository {
   private sessions: Map<string, ClaudeSession> = new Map();
 
-  constructor(initialData: ClaudeSession[] = DEMO_SESSIONS) {
+  constructor(initialData: ClaudeSession[] = []) {
     initialData.forEach((s) => this.sessions.set(s.id, { ...s }));
   }
 

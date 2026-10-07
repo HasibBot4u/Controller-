@@ -18,16 +18,17 @@ export function notFoundHandler(req: Request, res: Response): void {
 }
 
 export function errorHandler(
-  err: any,
+  err: unknown,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void {
   const requestId = req.requestId || 'unknown';
   const timestamp = new Date().toISOString();
 
-  // Log error internally on server without exposing stack trace to client
-  console.error(`[API Error] [${requestId}] ${req.method} ${req.path}:`, err?.message || err);
+  // Extract message and error details strictly
+  const errorMessage = err instanceof Error ? err.message : String(err);
+  console.error(`[API Error] [${requestId}] ${req.method} ${req.path}:`, errorMessage);
 
   if (err instanceof ActivityTransitionError) {
     res.status(409).json({
@@ -76,16 +77,18 @@ export function errorHandler(
     return;
   }
 
-  const statusCode = typeof err.statusCode === 'number' ? err.statusCode : 500;
-  const errorCode = err.code || (statusCode === 404 ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR');
+  const errObj = (typeof err === 'object' && err !== null) ? (err as Record<string, unknown>) : {};
+  const statusCode = typeof errObj.statusCode === 'number' ? errObj.statusCode : 500;
+  const errorCode = typeof errObj.code === 'string' ? errObj.code : (statusCode === 404 ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR');
+  const service = typeof errObj.service === 'string' ? errObj.service : 'control-plane-api';
 
   res.status(statusCode).json({
     success: false,
     error: {
       code: errorCode,
-      message: err.message || 'An unexpected error occurred on the remote control plane',
+      message: errorMessage || 'An unexpected error occurred on the remote control plane',
       retryable: statusCode >= 500,
-      service: err.service || 'control-plane-api',
+      service,
     },
     requestId,
     timestamp,

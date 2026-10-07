@@ -97,7 +97,7 @@ export const SettingsScreen: React.FC = () => {
             <span className="text-slate-400 text-xs">Scope client navigation to specific workstation repo</span>
           </div>
           <select
-            value={selectedProjectId}
+            value={selectedProjectId || 'proj-01'}
             onChange={(e) => setSelectedProjectId(e.target.value)}
             className="bg-black/50 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-400 font-mono"
           >

@@ -5,7 +5,25 @@ import { ApprovalStatus, RiskLevel } from '../../domain/enums/index.ts';
 import { ShieldAlert, X, Check, Terminal, FileDiff } from 'lucide-react';
 
 export const ApprovalModal: React.FC = () => {
-  const { activeApproval, resolveApproval, closeApprovalModal } = useControlCenter();
+  const { activeApproval, approvalErrorMessage, resolveApproval, closeApprovalModal } = useControlCenter();
+
+  if (!activeApproval && !approvalErrorMessage) return null;
+
+  if (!activeApproval && approvalErrorMessage) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="w-full max-w-md bg-[#0e1422] border border-rose-600 rounded-2xl p-5 text-slate-100 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-rose-400 text-sm">Action Blocked</span>
+            <button onClick={closeApprovalModal} className="text-slate-400 hover:text-slate-200">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-xs text-rose-300">{approvalErrorMessage}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!activeApproval) return null;
 

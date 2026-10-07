@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useControlCenter } from '../../../context/ControlCenterContext.tsx';
 import { ModelProfile, TaskRoutingPolicy } from '../../../domain/models/index.ts';
+import { HealthStatus } from '../../../domain/enums/index.ts';
 import { HealthBadge } from '../../common/HealthBadge.tsx';
 import {
   Sparkles,
@@ -124,7 +125,7 @@ export const ModelsScreen: React.FC = () => {
                   </div>
                   <span className="text-[11px] text-amber-400 mt-0.5 block">{p.provider}</span>
                 </div>
-                <HealthBadge status={p.availability} />
+                <HealthBadge status={p.availability || HealthStatus.UNKNOWN} />
               </div>
 
               <div className="text-[11px] text-slate-400 truncate">Endpoint: {p.baseUrl}</div>
@@ -155,7 +156,9 @@ export const ModelsScreen: React.FC = () => {
 
               <div className="pt-2 border-t border-slate-800 flex justify-between text-[11px] text-slate-400">
                 <span>
-                  Est. Cost: ${p.estimatedCostPer1M.input} / ${p.estimatedCostPer1M.output} per 1M tokens
+                  {p.estimatedCostPer1M
+                    ? `Est. Cost: $${p.estimatedCostPer1M.input} / $${p.estimatedCostPer1M.output} per 1M tokens`
+                    : 'Est. Cost: Tier-based / Dynamic'}
                 </span>
                 <span>Priority: #{p.priority}</span>
               </div>

@@ -6,7 +6,7 @@ export class MemoryEventRepository implements EventRepository {
   private events: ActivityEvent[] = [];
   private sequenceCounters: Map<string, number> = new Map();
 
-  constructor(initialData: ActivityEvent[] = DEMO_EVENTS) {
+  constructor(initialData: ActivityEvent[] = []) {
     this.events = initialData.map((e) => ({ ...e }));
     // Initialize sequence counters from initial data
     this.events.forEach((e) => {

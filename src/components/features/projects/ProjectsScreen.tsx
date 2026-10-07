@@ -269,7 +269,7 @@ export const ProjectsScreen: React.FC = () => {
                     <div>
                       <div className="font-semibold text-slate-200">{act.title}</div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
-                        {act.id} • {act.gitBranch} • ${act.estimatedCost.toFixed(2)}
+                        {act.id} • {act.gitBranch} • ${(act.estimatedCost ?? 0).toFixed(2)}
                       </div>
                     </div>
                     <ArrowRight className="w-3.5 h-3.5 text-slate-500" />

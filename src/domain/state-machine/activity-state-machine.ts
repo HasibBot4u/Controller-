@@ -8,19 +8,21 @@ export const VALID_ACTIVITY_TRANSITIONS: Readonly<Record<ActivityStatus, readonl
   [ActivityStatus.DRAFT]: [
     ActivityStatus.QUEUED,
     ActivityStatus.STARTING,
-    ActivityStatus.COMPLETED, // cancelled before start
+    ActivityStatus.CANCELLED,
   ],
   [ActivityStatus.QUEUED]: [
     ActivityStatus.STARTING,
     ActivityStatus.PAUSED,
     ActivityStatus.INTERRUPTED,
     ActivityStatus.FAILED,
+    ActivityStatus.CANCELLED,
   ],
   [ActivityStatus.STARTING]: [
     ActivityStatus.RUNNING,
     ActivityStatus.WAITING_APPROVAL,
     ActivityStatus.INTERRUPTED,
     ActivityStatus.FAILED,
+    ActivityStatus.CANCELLED,
   ],
   [ActivityStatus.RUNNING]: [
     ActivityStatus.WAITING_APPROVAL,
@@ -28,6 +30,7 @@ export const VALID_ACTIVITY_TRANSITIONS: Readonly<Record<ActivityStatus, readonl
     ActivityStatus.DETACHED,
     ActivityStatus.INTERRUPTED,
     ActivityStatus.FAILED,
+    ActivityStatus.CANCELLED,
     ActivityStatus.COMPLETED,
   ],
   [ActivityStatus.WAITING_APPROVAL]: [
@@ -35,33 +38,38 @@ export const VALID_ACTIVITY_TRANSITIONS: Readonly<Record<ActivityStatus, readonl
     ActivityStatus.FAILED,  // rejected or expired
     ActivityStatus.PAUSED,
     ActivityStatus.INTERRUPTED,
+    ActivityStatus.CANCELLED,
   ],
   [ActivityStatus.PAUSED]: [
     ActivityStatus.RUNNING, // resumed
     ActivityStatus.INTERRUPTED,
     ActivityStatus.FAILED,
-    ActivityStatus.COMPLETED, // user stopped while paused
+    ActivityStatus.CANCELLED, // user stopped while paused
   ],
   [ActivityStatus.DETACHED]: [
     ActivityStatus.RUNNING,     // client reconnected
     ActivityStatus.RECOVERABLE, // preserved by daemon
     ActivityStatus.INTERRUPTED,
     ActivityStatus.FAILED,
+    ActivityStatus.CANCELLED,
   ],
   [ActivityStatus.INTERRUPTED]: [
     ActivityStatus.RECOVERABLE,
     ActivityStatus.FAILED,
-    ActivityStatus.COMPLETED,
+    ActivityStatus.CANCELLED,
   ],
   [ActivityStatus.RECOVERABLE]: [
+    ActivityStatus.STARTING,
     ActivityStatus.RUNNING, // resumed from checkpoint
     ActivityStatus.QUEUED,  // re-queued
     ActivityStatus.FAILED,
+    ActivityStatus.CANCELLED,
   ],
   [ActivityStatus.FAILED]: [
     ActivityStatus.RECOVERABLE, // can attempt recovery from last checkpoint
-    ActivityStatus.QUEUED,      // retry
+    ActivityStatus.QUEUED,      // retry step 1
   ],
+  [ActivityStatus.CANCELLED]: [],
   [ActivityStatus.COMPLETED]: [],
 };
 

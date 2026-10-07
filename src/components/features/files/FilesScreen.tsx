@@ -34,10 +34,12 @@ export const FilesScreen: React.FC = () => {
   const [createType, setCreateType] = useState<'file' | 'folder'>('file');
   const [newFilePath, setNewFilePath] = useState('');
 
+  const activeProjId = selectedProjectId || 'proj-01';
+
   const loadFiles = () => {
     setLoading(true);
     services.filesApi
-      .getFiles(selectedProjectId)
+      .getFiles(activeProjId)
       .then((res) => {
         setFiles(res.data);
         if (!selectedFile) {
@@ -53,7 +55,7 @@ export const FilesScreen: React.FC = () => {
 
   useEffect(() => {
     loadFiles();
-  }, [selectedProjectId, services]);
+  }, [activeProjId, services]);
 
   const handleOpenFile = (file: FileItem) => {
     if (file.isDirectory) return;
@@ -65,7 +67,7 @@ export const FilesScreen: React.FC = () => {
   const handleSaveFile = async () => {
     if (!selectedFile) return;
     try {
-      await services.filesApi.saveFileContent(selectedProjectId, selectedFile.path, editorContent);
+      await services.filesApi.saveFileContent(activeProjId, selectedFile.path, editorContent);
       setSaveStatus('Saved on remote workstation filesystem.');
       setTimeout(() => setSaveStatus(null), 3000);
       setIsEditing(false);
@@ -78,16 +80,16 @@ export const FilesScreen: React.FC = () => {
   const handleDeleteFile = async (file: FileItem) => {
     const approved = await requestApproval({
       activityId: 'act-file-op',
-      projectId: selectedProjectId,
+      projectId: activeProjId,
       riskLevel: RiskLevel.STRONG_CONFIRM,
       actionType: 'FILE_DELETE',
       title: `Delete File: ${file.path}`,
-      description: `Permanent deletion on remote filesystem: /home/oracle/workspace/${selectedProjectId}/${file.path}`,
+      description: `Permanent deletion on remote filesystem: /home/oracle/workspace/${activeProjId}/${file.path}`,
       parameters: { path: file.path, isDirectory: file.isDirectory },
     });
 
     if (approved) {
-      await services.filesApi.deleteFile(selectedProjectId, file.path);
+      await services.filesApi.deleteFile(activeProjId, file.path);
       if (selectedFile?.path === file.path) {
         setSelectedFile(null);
         setEditorContent('');
@@ -99,7 +101,7 @@ export const FilesScreen: React.FC = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFilePath.trim()) return;
-    await services.filesApi.createFile(selectedProjectId, newFilePath, createType === 'folder');
+    await services.filesApi.createFile(activeProjId, newFilePath, createType === 'folder');
     setShowCreateModal(false);
     setNewFilePath('');
     loadFiles();

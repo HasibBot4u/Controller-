@@ -671,6 +671,7 @@ export const DEMO_GITHUB_STATUS: GitHubRepoStatus = {
   schemaVersion: 1,
   repository: 'demo/claude-workstation-core',
   currentBranch: 'feat/sse-heartbeat-v2',
+  isConnected: true,
   isClean: false,
   issuesCount: 3,
   prsCount: 2,

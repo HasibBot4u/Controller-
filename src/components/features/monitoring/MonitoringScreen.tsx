@@ -63,8 +63,8 @@ export const MonitoringScreen: React.FC = () => {
             <div className="h-full bg-amber-400" style={{ width: `${resources.cpuPercent}%` }} />
           </div>
           <div className="flex justify-between text-[10px] text-slate-500">
-            <span>{resources.cpuCores} Cores vCPU</span>
-            <span>Load: {resources.cpuLoadAvg.join(', ')}</span>
+            <span>{resources.cpuCores ?? 0} Cores vCPU</span>
+            <span>Load: {resources.cpuLoadAvg ? resources.cpuLoadAvg.join(', ') : 'N/A'}</span>
           </div>
         </div>
 

@@ -720,6 +720,7 @@ export const INITIAL_GITHUB_STATUS: GitHubRepoStatus = {
   schemaVersion: 1,
   repository: 'org/claude-workstation-core',
   currentBranch: 'feat/sse-heartbeat-v2',
+  isConnected: true,
   isClean: false,
   issuesCount: 3,
   prsCount: 2,

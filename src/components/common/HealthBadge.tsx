@@ -34,6 +34,11 @@ export const HealthBadge: React.FC<HealthBadgeProps> = ({
       badgeColor = 'bg-rose-950/40 border-rose-800/50 text-rose-300';
       defaultLabel = 'Unavailable';
       break;
+    case HealthStatus.NOT_CONFIGURED:
+      dotColor = 'bg-slate-500';
+      badgeColor = 'bg-slate-900 border-slate-800 text-slate-400';
+      defaultLabel = 'Not Configured';
+      break;
     case HealthStatus.UNKNOWN:
     default:
       dotColor = 'bg-blue-400';

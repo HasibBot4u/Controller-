@@ -1,4 +1,4 @@
-import { ActivityStatus, EventType, RiskLevel, HealthStatus, ApprovalStatus } from '../enums/index.ts';
+import { ActivityStatus, EventType, RiskLevel, HealthStatus, ApprovalStatus, DataOrigin } from '../enums/index.ts';
 
 export interface BaseEntity {
   schemaVersion: number;
@@ -18,15 +18,15 @@ export interface Activity extends BaseEntity {
   currentAction: string;
   nextAction: string;
   blocker: string | null;
-  claudeSessionId: string;
+  claudeSessionId: string | null;
   provider: string;
   model: string;
-  gitBranch: string;
-  gitBaseCommit: string;
+  gitBranch: string | null;
+  gitBaseCommit: string | null;
   filesChangedCount: number;
   testsPassed: number;
   testsFailed: number;
-  estimatedCost: number;
+  estimatedCost: number | null;
   durationMs: number;
   checkpointId: string | null;
   handoffAvailable: boolean;
@@ -93,36 +93,38 @@ export interface ClaudeSession extends BaseEntity {
   model: string;
   status: 'CONNECTED' | 'STREAMING' | 'IDLE' | 'DETACHED' | 'TERMINATED';
   createdAt: string;
-  tokensIn: number;
-  tokensOut: number;
-  cost: number;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  cost: number | null;
   planMode: boolean;
   approvalMode: 'STRICT' | 'STANDARD' | 'PERMISSIVE';
-  contextUsagePercent: number;
+  contextUsagePercent: number | null;
 }
 
 export interface SystemServiceStatus {
   name: string;
   status: HealthStatus;
-  latencyMs: number;
+  latencyMs: number | null;
   message?: string;
   lastChecked: string;
+  origin?: DataOrigin;
 }
 
 export interface ServerResourceSummary {
-  cpuPercent: number;
-  cpuCores: number;
-  cpuLoadAvg: [number, number, number];
-  memoryUsedGb: number;
-  memoryTotalGb: number;
-  memoryPercent: number;
-  diskUsedGb: number;
-  diskTotalGb: number;
-  diskPercent: number;
-  uptimeSeconds: number;
-  uptimeFormatted: string;
-  osName: string;
-  kernelVersion: string;
+  cpuPercent: number | null;
+  cpuCores: number | null;
+  cpuLoadAvg: [number, number, number] | null;
+  memoryUsedGb: number | null;
+  memoryTotalGb: number | null;
+  memoryPercent: number | null;
+  diskUsedGb: number | null;
+  diskTotalGb: number | null;
+  diskPercent: number | null;
+  uptimeSeconds: number | null;
+  uptimeFormatted: string | null;
+  osName: string | null;
+  kernelVersion: string | null;
+  origin?: DataOrigin;
 }
 
 export interface WorkSummary {
@@ -134,12 +136,13 @@ export interface WorkSummary {
 }
 
 export interface AISummary {
-  currentProvider: string;
-  currentModel: string;
-  todayRequests: number;
-  todayEstimatedCost: number;
-  weeklyCost: number;
-  monthlyCost: number;
+  currentProvider: string | null;
+  currentModel: string | null;
+  todayRequests: number | null;
+  todayEstimatedCost: number | null;
+  weeklyCost: number | null;
+  monthlyCost: number | null;
+  origin?: DataOrigin;
 }
 
 export interface DashboardState extends BaseEntity {
@@ -173,12 +176,13 @@ export interface FileItem {
 
 export interface TerminalSession {
   sessionId: string;
-  status: 'CONNECTED' | 'DISCONNECTED' | 'TERMINATED';
+  status: 'CONNECTED' | 'DISCONNECTED' | 'TERMINATED' | 'NOT_CONFIGURED';
   pty: string;
   cols: number;
   rows: number;
   cwd: string;
   connectedAt: string;
+  message?: string;
 }
 
 export interface TerminalOutput {
@@ -191,28 +195,38 @@ export interface TerminalOutput {
 export interface McpServerItem extends BaseEntity {
   id: string;
   name: string;
-  transport: 'stdio' | 'sse' | 'websocket';
+  transport: 'stdio' | 'streamable-http' | 'legacy-sse' | 'sse';
   status: HealthStatus;
   version: string;
   enabled: boolean;
-  health: 'OK' | 'WARN' | 'CRIT' | 'OFFLINE';
+  health: 'OK' | 'WARN' | 'CRIT' | 'OFFLINE' | 'NOT_CONFIGURED';
   toolsCount: number;
   lastError: string | null;
   command?: string;
   description: string;
+  origin?: DataOrigin;
 }
 
 export interface ModelProfile extends BaseEntity {
   id: string;
-  provider: 'Anthropic' | 'LiteLLM' | 'Gemini' | 'OpenRouter' | 'Custom' | 'Local';
-  model: string;
-  baseUrl: string;
-  availability: HealthStatus;
+  provider: 'Anthropic' | 'Google' | 'LiteLLM' | 'Custom' | 'Gemini' | 'OpenRouter';
+  displayName?: string;
+  alias?: string;
+  model?: string;
+  modelId?: string;
+  baseUrl?: string;
+  status?: 'REFERENCE_ONLY' | 'CONFIGURED' | 'AVAILABLE' | 'UNAVAILABLE';
+  availability?: HealthStatus;
+  origin?: DataOrigin;
+  verifiedAt?: string;
+  sourceUrl?: string;
+  notes?: string;
   toolCalling: boolean;
   streaming: boolean;
   thinkingSupport: boolean;
-  tokenAccounting: boolean;
-  estimatedCostPer1M: { input: number; output: number };
+  tokenAccounting?: boolean;
+  contextWindow?: number;
+  estimatedCostPer1M?: { input: number; output: number };
   priority: number;
 }
 
@@ -226,13 +240,14 @@ export interface TaskRoutingPolicy extends BaseEntity {
 }
 
 export interface BackupStatus extends BaseEntity {
-  lastSuccessfulBackup: string;
-  backupAge: string;
-  destination: string;
-  checksumState: 'VERIFIED' | 'PENDING' | 'CORRUPTED';
-  lastRestoreTest: string;
-  backupSize: string;
-  nextScheduledBackup: string;
+  lastSuccessfulBackup: string | null;
+  backupAge: string | null;
+  destination: string | null;
+  checksumState: 'VERIFIED' | 'PENDING' | 'CORRUPTED' | 'NOT_CONFIGURED';
+  lastRestoreTest: string | null;
+  backupSize: string | null;
+  nextScheduledBackup: string | null;
+  origin?: DataOrigin;
   history: Array<{
     id: string;
     timestamp: string;
@@ -244,12 +259,14 @@ export interface BackupStatus extends BaseEntity {
 }
 
 export interface GitHubRepoStatus extends BaseEntity {
-  repository: string;
-  currentBranch: string;
-  isClean: boolean;
-  issuesCount: number;
-  prsCount: number;
-  ciStatus: 'SUCCESS' | 'RUNNING' | 'FAILED' | 'UNKNOWN';
+  repository: string | null;
+  currentBranch: string | null;
+  isConnected: boolean;
+  isClean: boolean | null;
+  issuesCount: number | null;
+  prsCount: number | null;
+  ciStatus: 'SUCCESS' | 'RUNNING' | 'FAILED' | 'UNKNOWN' | 'NOT_CONFIGURED';
+  origin?: DataOrigin;
   recentCommits: Array<{
     sha: string;
     message: string;
@@ -274,6 +291,23 @@ export interface BackgroundJob extends BaseEntity {
   startedAt: string;
   durationMs: number;
   command: string;
+  origin?: DataOrigin;
+}
+
+export interface HealthStatusResponse {
+  controlPlane: {
+    status: HealthStatus;
+    version: string;
+    uptimeSeconds: number;
+  };
+  executionBackend: {
+    status: HealthStatus;
+    message?: string;
+  };
+  dataMode: 'EMPTY' | 'DEMO';
+  persistence: 'IN_MEMORY';
+  phase: 'PHASE_1';
+  services: SystemServiceStatus[];
 }
 
 export interface AppError {

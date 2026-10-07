@@ -13,22 +13,14 @@ declare global {
 /**
  * Phase 1 Authentication Middleware
  * Explicitly labeled as PHASE1_DEMO auth mode.
- * Does not expose or require production secrets.
+ * Note: Does not trust client-supplied role headers (e.g. x-demo-role) for privilege escalation.
+ * Phase 1 uses a fixed verified demo principal: phase1-demo-user (OWNER).
+ * This represents Phase 1 Demo Authentication, not production security.
  */
-export function authenticateRequest(req: Request, res: Response, next: NextFunction): void {
-  // Check optional demo role header, default to OWNER for full Phase 1 testability
-  const roleHeader = req.headers['x-demo-role'] as string | undefined;
-  let role: AuthPrincipal['role'] = 'OWNER';
-
-  if (roleHeader === 'OPERATOR') {
-    role = 'OPERATOR';
-  } else if (roleHeader === 'VIEWER') {
-    role = 'VIEWER';
-  }
-
+export function authenticateRequest(req: Request, _res: Response, next: NextFunction): void {
   req.user = {
-    id: 'demo-user-01',
-    role,
+    id: 'phase1-demo-user',
+    role: 'OWNER',
     authMode: 'PHASE1_DEMO',
   };
 

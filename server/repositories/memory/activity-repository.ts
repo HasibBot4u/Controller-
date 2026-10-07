@@ -7,7 +7,7 @@ import { DEMO_ACTIVITIES } from '../../adapters/mock/mock-data.ts';
 export class MemoryActivityRepository implements ActivityRepository {
   private activities: Map<string, Activity> = new Map();
 
-  constructor(initialData: Activity[] = DEMO_ACTIVITIES) {
+  constructor(initialData: Activity[] = []) {
     initialData.forEach((a) => this.activities.set(a.id, { ...a }));
   }
 

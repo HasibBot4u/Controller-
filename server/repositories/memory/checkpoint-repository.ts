@@ -5,7 +5,7 @@ import { DEMO_CHECKPOINTS } from '../../adapters/mock/mock-data.ts';
 export class MemoryCheckpointRepository implements CheckpointRepository {
   private checkpoints: Map<string, Checkpoint> = new Map();
 
-  constructor(initialData: Checkpoint[] = DEMO_CHECKPOINTS) {
+  constructor(initialData: Checkpoint[] = []) {
     initialData.forEach((c) => this.checkpoints.set(c.id, { ...c }));
   }
 

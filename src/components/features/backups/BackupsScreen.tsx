@@ -101,7 +101,9 @@ export const BackupsScreen: React.FC = () => {
           <div>
             <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Last Successful Snapshot</span>
             <span className="text-sm font-bold text-slate-200">
-              {new Date(backupStatus.lastSuccessfulBackup).toLocaleString()} ({backupStatus.backupAge})
+              {backupStatus.lastSuccessfulBackup
+                ? `${new Date(backupStatus.lastSuccessfulBackup).toLocaleString()} (${backupStatus.backupAge || ''})`
+                : 'No backup recorded'}
             </span>
           </div>
 
@@ -118,7 +120,9 @@ export const BackupsScreen: React.FC = () => {
           </div>
           <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800">
             <span className="text-[10px] text-slate-400 block mb-0.5">Next Schedule</span>
-            <span className="font-semibold text-slate-100">{new Date(backupStatus.nextScheduledBackup).toLocaleTimeString()}</span>
+            <span className="font-semibold text-slate-100">
+              {backupStatus.nextScheduledBackup ? new Date(backupStatus.nextScheduledBackup).toLocaleTimeString() : 'None'}
+            </span>
           </div>
           <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800 col-span-2">
             <span className="text-[10px] text-slate-400 block mb-0.5">Last Restore Verification</span>

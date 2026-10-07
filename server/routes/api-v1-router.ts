@@ -3,17 +3,21 @@ import {
   DEMO_DASHBOARD_STATE,
   DEMO_FILES,
   DEMO_MCP_SERVERS,
-  DEMO_MODEL_PROFILES,
   DEMO_ROUTING_POLICIES,
   DEMO_BACKUP_STATUS,
   DEMO_GITHUB_STATUS,
   DEMO_JOBS,
-  DEMO_RESOURCE_SUMMARY,
-  DEMO_SYSTEM_SERVICES,
+  DEMO_PROJECTS,
+  DEMO_ACTIVITIES,
+  DEMO_EVENTS,
+  DEMO_CHECKPOINTS,
+  DEMO_APPROVALS,
+  DEMO_SESSIONS,
 } from '../adapters/mock/mock-data.ts';
+import { VERIFIED_REFERENCE_MODELS } from '../../src/domain/reference/models.ts';
 import { ActivityStatus, ApprovalStatus, EventType, RiskLevel, HealthStatus } from '../../src/domain/enums/index.ts';
 import { assertActivityTransition } from '../../src/domain/state-machine/activity-state-machine.ts';
-import { validateRelativeFilePath, FileSafetyError } from '../validation/path-validator.ts';
+import { validateRelativeFilePath } from '../validation/path-validator.ts';
 import { requireRole } from '../middleware/auth.ts';
 import { MemoryProjectRepository } from '../repositories/memory/project-repository.ts';
 import { MemoryActivityRepository } from '../repositories/memory/activity-repository.ts';
@@ -21,29 +25,77 @@ import { MemoryEventRepository } from '../repositories/memory/event-repository.t
 import { MemoryCheckpointRepository } from '../repositories/memory/checkpoint-repository.ts';
 import { MemoryApprovalRepository } from '../repositories/memory/approval-repository.ts';
 import { MemorySessionRepository } from '../repositories/memory/session-repository.ts';
-import { FileItem, BackgroundJob, McpServerItem } from '../../src/domain/models/index.ts';
+import {
+  FileItem,
+  BackgroundJob,
+  McpServerItem,
+  TaskRoutingPolicy,
+  BackupStatus,
+  GitHubRepoStatus,
+  HealthStatusResponse,
+  DashboardState,
+  TerminalSession,
+  TerminalOutput,
+} from '../../src/domain/models/index.ts';
 
 export const apiV1Router = Router();
 
-// Server-side in-memory repository singletons (Source of truth for Phase 1)
-const projectRepo = new MemoryProjectRepository();
-const activityRepo = new MemoryActivityRepository();
-const eventRepo = new MemoryEventRepository();
-const checkpointRepo = new MemoryCheckpointRepository();
-const approvalRepo = new MemoryApprovalRepository();
-const sessionRepo = new MemorySessionRepository();
+// Mode detection: Default is strictly FALSE (Empty / Unconfigured)
+const isDemoMode = process.env.PHASE1_DEMO_MODE === 'true';
 
-// Ephemeral server collections for files, MCP, models, jobs, backups, GitHub
+// Server-side repositories: Default start EMPTY unless PHASE1_DEMO_MODE is true
+const projectRepo = new MemoryProjectRepository(isDemoMode ? DEMO_PROJECTS : []);
+const activityRepo = new MemoryActivityRepository(isDemoMode ? DEMO_ACTIVITIES : []);
+const eventRepo = new MemoryEventRepository(isDemoMode ? DEMO_EVENTS : []);
+const checkpointRepo = new MemoryCheckpointRepository(isDemoMode ? DEMO_CHECKPOINTS : []);
+const approvalRepo = new MemoryApprovalRepository(isDemoMode ? DEMO_APPROVALS : []);
+const sessionRepo = new MemorySessionRepository(isDemoMode ? DEMO_SESSIONS : []);
+
+// Ephemeral server stores
 const filesStore = new Map<string, FileItem[]>();
-Object.entries(DEMO_FILES).forEach(([projId, list]) => {
-  filesStore.set(projId, list.map((f) => ({ ...f })));
-});
+if (isDemoMode) {
+  Object.entries(DEMO_FILES).forEach(([projId, list]) => {
+    filesStore.set(projId, list.map((f) => ({ ...f })));
+  });
+}
 
-let mcpServersStore = DEMO_MCP_SERVERS.map((s) => ({ ...s }));
-let routingPoliciesStore = DEMO_ROUTING_POLICIES.map((p) => ({ ...p }));
-let jobsStore: BackgroundJob[] = DEMO_JOBS.map((j) => ({ ...j }));
-let backupStatusStore = { ...DEMO_BACKUP_STATUS };
-let githubStatusStore = { ...DEMO_GITHUB_STATUS };
+const mcpServersStore: McpServerItem[] = isDemoMode ? DEMO_MCP_SERVERS.map((s) => ({ ...s })) : [];
+const routingPoliciesStore: TaskRoutingPolicy[] = isDemoMode ? DEMO_ROUTING_POLICIES.map((p) => ({ ...p })) : [];
+const jobsStore: BackgroundJob[] = isDemoMode ? DEMO_JOBS.map((j) => ({ ...j })) : [];
+
+const backupStatusStore: BackupStatus = isDemoMode
+  ? { ...DEMO_BACKUP_STATUS }
+  : {
+      schemaVersion: 1,
+      lastSuccessfulBackup: null,
+      backupAge: null,
+      destination: null,
+      checksumState: 'NOT_CONFIGURED',
+      lastRestoreTest: null,
+      backupSize: null,
+      nextScheduledBackup: null,
+      history: [],
+      origin: 'UNAVAILABLE',
+    };
+
+const githubStatusStore: GitHubRepoStatus = isDemoMode
+  ? { ...DEMO_GITHUB_STATUS }
+  : {
+      schemaVersion: 1,
+      repository: null,
+      currentBranch: null,
+      isConnected: false,
+      isClean: null,
+      issuesCount: null,
+      prsCount: null,
+      ciStatus: 'NOT_CONFIGURED',
+      recentCommits: [],
+      pullRequests: [],
+      origin: 'UNAVAILABLE',
+    };
+
+// Terminal sessions in-memory store
+const terminalSessionsStore = new Map<string, { session: TerminalSession; outputs: TerminalOutput[] }>();
 
 function sendSuccess<T>(req: Request, res: Response, data: T, statusCode = 200) {
   res.status(statusCode).json({
@@ -77,18 +129,87 @@ function sendError(
 }
 
 // ==========================================
-// 1. HEALTH & DASHBOARD
+// 1. HEALTH & DASHBOARD (Truthful State)
 // ==========================================
 
 // GET /api/v1/health
 apiV1Router.get('/health', (req: Request, res: Response) => {
-  sendSuccess(res.req, res, {
-    status: 'HEALTHY',
-    version: '1.0.0-phase1-preview',
-    persistence: 'IN-MEMORY',
-    uptime: DEMO_RESOURCE_SUMMARY.uptimeSeconds,
-    services: DEMO_SYSTEM_SERVICES,
-  });
+  const healthData: HealthStatusResponse = {
+    controlPlane: {
+      status: HealthStatus.HEALTHY,
+      version: '1.0.0-phase1',
+      uptimeSeconds: Math.floor(process.uptime()),
+    },
+    executionBackend: {
+      status: isDemoMode ? HealthStatus.DEGRADED : HealthStatus.NOT_CONFIGURED,
+      message: isDemoMode
+        ? 'Simulated in-memory host active (PHASE1_DEMO_MODE=true)'
+        : 'Remote workstation execution layer is not configured',
+    },
+    dataMode: isDemoMode ? 'DEMO' : 'EMPTY',
+    persistence: 'IN_MEMORY',
+    phase: 'PHASE_1',
+    services: [
+      {
+        name: 'Control Plane HTTP Server',
+        status: HealthStatus.HEALTHY,
+        latencyMs: 1,
+        message: 'Responsive',
+        lastChecked: 'now',
+        origin: 'LIVE',
+      },
+      {
+        name: 'Remote Workstation Host',
+        status: isDemoMode ? HealthStatus.HEALTHY : HealthStatus.NOT_CONFIGURED,
+        latencyMs: isDemoMode ? 14 : null,
+        message: isDemoMode ? 'Simulated host' : 'Unconfigured',
+        lastChecked: isDemoMode ? 'now' : 'never',
+        origin: isDemoMode ? 'DEMO' : 'UNAVAILABLE',
+      },
+      {
+        name: 'Claude Code Remote Daemon',
+        status: isDemoMode ? HealthStatus.HEALTHY : HealthStatus.NOT_CONFIGURED,
+        latencyMs: isDemoMode ? 22 : null,
+        message: isDemoMode ? 'Simulated daemon' : 'Unconfigured',
+        lastChecked: isDemoMode ? 'now' : 'never',
+        origin: isDemoMode ? 'DEMO' : 'UNAVAILABLE',
+      },
+      {
+        name: 'MCP Gateway Daemon',
+        status: isDemoMode ? HealthStatus.HEALTHY : HealthStatus.NOT_CONFIGURED,
+        latencyMs: isDemoMode ? 18 : null,
+        message: isDemoMode ? 'Simulated MCP' : 'Unconfigured',
+        lastChecked: isDemoMode ? 'now' : 'never',
+        origin: isDemoMode ? 'DEMO' : 'UNAVAILABLE',
+      },
+      {
+        name: 'LiteLLM Proxy Router',
+        status: isDemoMode ? HealthStatus.HEALTHY : HealthStatus.NOT_CONFIGURED,
+        latencyMs: isDemoMode ? 29 : null,
+        message: isDemoMode ? 'Simulated proxy' : 'Unconfigured',
+        lastChecked: isDemoMode ? 'now' : 'never',
+        origin: isDemoMode ? 'DEMO' : 'UNAVAILABLE',
+      },
+      {
+        name: 'GitHub Remote Integration',
+        status: isDemoMode ? HealthStatus.HEALTHY : HealthStatus.NOT_CONFIGURED,
+        latencyMs: isDemoMode ? 38 : null,
+        message: isDemoMode ? 'Simulated git sync' : 'Unconfigured',
+        lastChecked: isDemoMode ? 'now' : 'never',
+        origin: isDemoMode ? 'DEMO' : 'UNAVAILABLE',
+      },
+      {
+        name: 'Backup & Restore Agent',
+        status: isDemoMode ? HealthStatus.HEALTHY : HealthStatus.NOT_CONFIGURED,
+        latencyMs: isDemoMode ? 42 : null,
+        message: isDemoMode ? 'Simulated snapshot runner' : 'Unconfigured',
+        lastChecked: isDemoMode ? 'now' : 'never',
+        origin: isDemoMode ? 'DEMO' : 'UNAVAILABLE',
+      },
+    ],
+  };
+
+  sendSuccess(req, res, healthData);
 });
 
 // GET /api/v1/dashboard
@@ -103,18 +224,71 @@ apiV1Router.get('/dashboard', async (req: Request, res: Response, next: NextFunc
     const completed = activities.filter((a) => a.status === ActivityStatus.COMPLETED).length;
     const failed = activities.filter((a) => a.status === ActivityStatus.FAILED).length;
 
-    sendSuccess(req, res, {
-      ...DEMO_DASHBOARD_STATE,
-      recentActivities: activities,
-      pendingApprovals: approvals,
-      workSummary: {
-        runningActivities: running,
-        waitingApprovals: waiting,
-        recoverableActivities: recoverable,
-        completedActivities: completed,
-        failedActivities: failed,
-      },
-    });
+    let dashboardState: DashboardState;
+
+    if (isDemoMode) {
+      dashboardState = {
+        ...DEMO_DASHBOARD_STATE,
+        recentActivities: activities,
+        pendingApprovals: approvals,
+        workSummary: {
+          runningActivities: running,
+          waitingApprovals: waiting,
+          recoverableActivities: recoverable,
+          completedActivities: completed,
+          failedActivities: failed,
+        },
+      };
+    } else {
+      dashboardState = {
+        schemaVersion: 1,
+        systemStatus: {
+          cloud: HealthStatus.NOT_CONFIGURED,
+          claude: HealthStatus.NOT_CONFIGURED,
+          mcp: HealthStatus.NOT_CONFIGURED,
+          liteLLM: HealthStatus.NOT_CONFIGURED,
+          github: HealthStatus.NOT_CONFIGURED,
+          backup: HealthStatus.NOT_CONFIGURED,
+          monitoring: HealthStatus.NOT_CONFIGURED,
+        },
+        serverSummary: {
+          cpuPercent: null,
+          cpuCores: null,
+          cpuLoadAvg: null,
+          memoryUsedGb: null,
+          memoryTotalGb: null,
+          memoryPercent: null,
+          diskUsedGb: null,
+          diskTotalGb: null,
+          diskPercent: null,
+          uptimeSeconds: null,
+          uptimeFormatted: null,
+          osName: null,
+          kernelVersion: null,
+          origin: 'UNAVAILABLE',
+        },
+        workSummary: {
+          runningActivities: running,
+          waitingApprovals: waiting,
+          recoverableActivities: recoverable,
+          completedActivities: completed,
+          failedActivities: failed,
+        },
+        aiSummary: {
+          currentProvider: null,
+          currentModel: null,
+          todayRequests: null,
+          todayEstimatedCost: null,
+          weeklyCost: null,
+          monthlyCost: null,
+          origin: 'UNAVAILABLE',
+        },
+        recentActivities: activities,
+        pendingApprovals: approvals,
+      };
+    }
+
+    sendSuccess(req, res, dashboardState);
   } catch (err) {
     next(err);
   }
@@ -159,9 +333,9 @@ apiV1Router.post('/projects', async (req: Request, res: Response, next: NextFunc
     const created = await projectRepo.create({
       id,
       name: name.trim(),
-      description: description || '[PHASE 1 PREVIEW] Created project workspace',
-      rootPath: `/home/demo/workspace/${name.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`,
-      repository: repository || `github.com/demo/${name.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`,
+      description: description || 'Created project workspace',
+      rootPath: `/workspace/${name.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`,
+      repository: repository || `github.com/user/${name.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`,
       branch: 'main',
       status: 'ACTIVE',
       updatedAt: new Date().toISOString(),
@@ -178,7 +352,7 @@ apiV1Router.post('/projects', async (req: Request, res: Response, next: NextFunc
         isDirectory: false,
         updatedAt: new Date().toISOString(),
         sizeBytes: 80,
-        content: `# ${name}\n\nPhase 1 mock workspace project.`,
+        content: `# ${name}\n\nProject workspace initialized.`,
         extension: 'md',
       },
     ]);
@@ -221,96 +395,56 @@ apiV1Router.get('/activities/:id', async (req: Request, res: Response, next: Nex
 apiV1Router.post('/activities', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { projectId, title, description, model, provider } = req.body;
-
-    // 1. Validate project
-    if (!projectId) {
-      return sendError(req, res, 'MISSING_PROJECT_ID', 'Project ID is required', 400);
-    }
-    const project = await projectRepo.findById(projectId);
-    if (!project) {
-      return sendError(req, res, 'PROJECT_NOT_FOUND', `Project ${projectId} not found`, 404);
+    if (!projectId || !title) {
+      return sendError(req, res, 'MISSING_FIELDS', 'projectId and title are required', 400);
     }
 
-    // 2. Validate title
-    if (!title || typeof title !== 'string' || !title.trim()) {
-      return sendError(req, res, 'INVALID_TITLE', 'Activity title is required and cannot be empty', 400);
+    const proj = await projectRepo.findById(projectId);
+    if (!proj) {
+      return sendError(req, res, 'PROJECT_NOT_FOUND', `Project ${projectId} does not exist`, 404);
     }
 
-    const activityId = `act-${Date.now().toString().slice(-4)}`;
-    const sessionId = `sess-${Date.now().toString(36)}`;
-    const chosenModel = model || 'claude-3-7-sonnet';
-    const chosenProvider = provider || 'Anthropic (Mock)';
+    const id = `act-${Date.now().toString(36)}`;
+    const now = new Date().toISOString();
 
-    // 3. Create Activity
-    const newActivity = await activityRepo.create({
-      id: activityId,
+    const created = await activityRepo.create({
+      id,
       projectId,
       title: title.trim(),
-      description: description || '[PHASE 1 PREVIEW] Remote activity dispatch simulated',
-      status: ActivityStatus.RUNNING,
-      phase: 'Activity scheduled in Phase 1 demo sandbox',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      description: description || '',
+      status: ActivityStatus.DRAFT,
+      phase: 'Initial Draft',
+      createdAt: now,
+      updatedAt: now,
       lastEventSequence: 1,
-      lastKnownState: 'Initial session dispatch and workspace lock simulated',
-      currentAction: 'Waiting for prompt execution',
-      nextAction: 'Analyzing repository structure',
-      blocker: null,
-      claudeSessionId: sessionId,
-      provider: chosenProvider,
-      model: chosenModel,
-      gitBranch: `feat/${title.toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 20)}`,
-      gitBaseCommit: '9f83a21',
+      lastKnownState: 'Activity draft created. Awaiting execution backend configuration.',
+      currentAction: 'Idle in draft state',
+      nextAction: 'Configure execution host to start activity',
+      blocker: isDemoMode ? null : 'EXECUTION_BACKEND_NOT_CONFIGURED',
+      claudeSessionId: null,
+      provider: provider || 'Anthropic',
+      model: model || 'sonnet',
+      gitBranch: null,
+      gitBaseCommit: null,
       filesChangedCount: 0,
       testsPassed: 0,
       testsFailed: 0,
-      estimatedCost: 0.01,
-      durationMs: 100,
+      estimatedCost: null,
+      durationMs: 0,
       checkpointId: null,
       handoffAvailable: false,
-      recoverable: true,
+      recoverable: false,
       approvalCount: 0,
     });
 
-    // 4. Create Session
-    await sessionRepo.create({
-      id: sessionId,
-      activityId,
-      projectId,
-      provider: chosenProvider,
-      model: chosenModel,
-      status: 'STREAMING',
-      createdAt: new Date().toISOString(),
-      tokensIn: 500,
-      tokensOut: 120,
-      cost: 0.01,
-      planMode: true,
-      approvalMode: 'STANDARD',
-      contextUsagePercent: 1.2,
-    });
-
-    // 5. Append SESSION_STARTED event
-    const event = await eventRepo.append({
-      id: `evt-${Date.now()}-1`,
-      activityId,
-      timestamp: new Date().toISOString(),
+    await eventRepo.append({
+      activityId: id,
+      timestamp: now,
       type: EventType.SESSION_STARTED,
-      payload: {
-        provider: chosenProvider,
-        model: chosenModel,
-        title: title.trim(),
-        runtime: 'Phase 1 Mock Server Session',
-      },
+      payload: { title, model: created.model, provider: created.provider },
     });
 
-    // 6. Update lastEventSequence
-    await activityRepo.update(activityId, { lastEventSequence: event.sequence });
-    newActivity.lastEventSequence = event.sequence;
-
-    // Increment project activity count
-    await projectRepo.update(projectId, { activityCount: project.activityCount + 1 });
-
-    sendSuccess(req, res, newActivity, 201);
+    sendSuccess(req, res, created, 201);
   } catch (err) {
     next(err);
   }
@@ -322,17 +456,27 @@ apiV1Router.post('/activities/:id/continue', async (req: Request, res: Response,
     const act = await activityRepo.findById(req.params.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
 
+    if (!isDemoMode) {
+      return sendError(
+        req,
+        res,
+        'EXECUTION_BACKEND_NOT_CONFIGURED',
+        'Cannot execute activity: Remote execution backend is not configured.',
+        400
+      );
+    }
+
     assertActivityTransition(act.status, ActivityStatus.RUNNING);
 
-    const prompt = req.body?.prompt;
+    const { prompt } = req.body;
     const currentAction = prompt
-      ? `Processing instruction: "${prompt.slice(0, 35)}..."`
+      ? `Executing operator instruction: ${prompt}`
       : 'Continuing execution from last checkpoint';
 
     const updated = await activityRepo.update(act.id, {
       status: ActivityStatus.RUNNING,
       currentAction,
-      nextAction: 'Evaluating changes and executing test harness',
+      nextAction: 'Evaluating changes in sandbox',
       blocker: null,
     });
 
@@ -381,26 +525,24 @@ apiV1Router.post('/activities/:id/pause', async (req: Request, res: Response, ne
 });
 
 // POST /api/v1/activities/:id/stop
-// Item 6: "Stop" does NOT automatically mean "Completed".
-// It gracefully transitions to COMPLETED if active, or verifies valid transition.
 apiV1Router.post('/activities/:id/stop', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const act = await activityRepo.findById(req.params.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
 
-    assertActivityTransition(act.status, ActivityStatus.COMPLETED);
+    assertActivityTransition(act.status, ActivityStatus.CANCELLED);
 
     const updated = await activityRepo.update(act.id, {
-      status: ActivityStatus.COMPLETED,
-      currentAction: 'Cleanly terminated by operator',
-      nextAction: 'Archived',
+      status: ActivityStatus.CANCELLED,
+      currentAction: 'Cancelled by operator',
+      nextAction: 'None',
     });
 
     const evt = await eventRepo.append({
       activityId: act.id,
       timestamp: new Date().toISOString(),
-      type: EventType.ACTIVITY_COMPLETED,
-      payload: { reason: 'User requested stop and cleanup' },
+      type: EventType.ACTIVITY_INTERRUPTED,
+      payload: { reason: 'User requested cancellation' },
     });
     await activityRepo.update(act.id, { lastEventSequence: evt.sequence });
     if (updated) updated.lastEventSequence = evt.sequence;
@@ -421,8 +563,8 @@ apiV1Router.post('/activities/:id/retry', async (req: Request, res: Response, ne
 
     const updated = await activityRepo.update(act.id, {
       status: ActivityStatus.QUEUED,
-      currentAction: 'Retrying failed step in fresh sandbox',
-      blocker: null,
+      currentAction: 'Re-queued for execution',
+      blocker: isDemoMode ? null : 'EXECUTION_BACKEND_NOT_CONFIGURED',
     });
 
     const evt = await eventRepo.append({
@@ -446,19 +588,30 @@ apiV1Router.post('/activities/:id/resume', async (req: Request, res: Response, n
     const act = await activityRepo.findById(req.params.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
 
+    if (!isDemoMode) {
+      return sendError(
+        req,
+        res,
+        'EXECUTION_BACKEND_NOT_CONFIGURED',
+        'Cannot resume activity: Remote execution backend is not configured.',
+        400
+      );
+    }
+
     assertActivityTransition(act.status, ActivityStatus.RUNNING);
 
     const updated = await activityRepo.update(act.id, {
       status: ActivityStatus.RUNNING,
-      currentAction: 'Resumed remote agent daemon execution',
-      blocker: null,
+      currentAction: 'Resumed by operator',
+      nextAction: 'Evaluating sandbox state',
+      recoverable: false,
     });
 
     const evt = await eventRepo.append({
       activityId: act.id,
       timestamp: new Date().toISOString(),
       type: EventType.ACTIVITY_RECOVERED,
-      payload: { message: 'Recovered session from server state' },
+      payload: { message: 'Activity recovered from checkpoint' },
     });
     await activityRepo.update(act.id, { lastEventSequence: evt.sequence });
     if (updated) updated.lastEventSequence = evt.sequence;
@@ -470,69 +623,36 @@ apiV1Router.post('/activities/:id/resume', async (req: Request, res: Response, n
 });
 
 // POST /api/v1/activities/:id/fork
-// Item 14: Creates fork, returns new Activity, and associates new session and initial event.
 apiV1Router.post('/activities/:id/fork', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const parent = await activityRepo.findById(req.params.id);
-    if (!parent) return sendError(req, res, 'NOT_FOUND', 'Parent activity not found', 404);
+    const source = await activityRepo.findById(req.params.id);
+    if (!source) return sendError(req, res, 'NOT_FOUND', 'Source activity not found', 404);
 
-    const forkId = `act-${Date.now().toString().slice(-4)}`;
-    const forkSessionId = `sess-${Date.now().toString(36)}`;
+    const newId = `act-${Date.now().toString(36)}`;
+    const now = new Date().toISOString();
 
     const forked = await activityRepo.create({
-      id: forkId,
-      projectId: parent.projectId,
-      title: `${parent.title} (Fork)`,
-      description: `Forked from ${parent.id}: ${parent.description}`,
-      status: ActivityStatus.RUNNING,
-      phase: 'Forked session initialization',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      ...source,
+      id: newId,
+      title: `${source.title} (Forked)`,
+      status: ActivityStatus.DRAFT,
+      createdAt: now,
+      updatedAt: now,
       lastEventSequence: 1,
-      lastKnownState: `Forked from state of ${parent.id}`,
-      currentAction: 'Initialized branch fork',
-      nextAction: 'Ready for prompt',
-      blocker: null,
-      claudeSessionId: forkSessionId,
-      provider: parent.provider,
-      model: parent.model,
-      gitBranch: `${parent.gitBranch}-fork`,
-      gitBaseCommit: parent.gitBaseCommit,
-      filesChangedCount: parent.filesChangedCount,
-      testsPassed: parent.testsPassed,
-      testsFailed: 0,
-      estimatedCost: 0.02,
-      durationMs: 500,
-      checkpointId: parent.checkpointId,
-      handoffAvailable: true,
-      recoverable: true,
-      approvalCount: 0,
+      lastKnownState: `Forked from activity ${source.id}`,
+      currentAction: 'Idle in draft state',
+      nextAction: 'Configure execution host',
+      blocker: isDemoMode ? null : 'EXECUTION_BACKEND_NOT_CONFIGURED',
+      claudeSessionId: null,
+      checkpointId: null,
     });
 
-    await sessionRepo.create({
-      id: forkSessionId,
-      activityId: forkId,
-      projectId: parent.projectId,
-      provider: parent.provider,
-      model: parent.model,
-      status: 'STREAMING',
-      createdAt: new Date().toISOString(),
-      tokensIn: 800,
-      tokensOut: 200,
-      cost: 0.02,
-      planMode: true,
-      approvalMode: 'STANDARD',
-      contextUsagePercent: 2.1,
-    });
-
-    const evt = await eventRepo.append({
-      activityId: forkId,
-      timestamp: new Date().toISOString(),
+    await eventRepo.append({
+      activityId: newId,
+      timestamp: now,
       type: EventType.SESSION_STARTED,
-      payload: { forkedFrom: parent.id, branch: `${parent.gitBranch}-fork` },
+      payload: { forkedFrom: source.id },
     });
-    await activityRepo.update(forkId, { lastEventSequence: evt.sequence });
-    forked.lastEventSequence = evt.sequence;
 
     sendSuccess(req, res, forked, 201);
   } catch (err) {
@@ -540,11 +660,7 @@ apiV1Router.post('/activities/:id/fork', async (req: Request, res: Response, nex
   }
 });
 
-// POST /api/v1/activities/:id/rewind
-// Item 13: Structured operation rewind to checkpoint
-apiV1Router.post('/api/v1/activities/:id/rewind', async (req: Request, res: Response, next: NextFunction) => {
-  // mapped through router
-});
+// POST /api/v1/activities/:id/rewind (Single canonical route, no duplicate)
 apiV1Router.post('/activities/:id/rewind', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { checkpointId } = req.body;
@@ -571,7 +687,7 @@ apiV1Router.post('/activities/:id/rewind', async (req: Request, res: Response, n
     const evt = await eventRepo.append({
       activityId: act.id,
       timestamp: new Date().toISOString(),
-      type: EventType.CHECKPOINT_CREATED,
+      type: EventType.ACTIVITY_REWOUND,
       payload: { rewindToCheckpoint: checkpointId, description: chk.description },
     });
     await activityRepo.update(act.id, { lastEventSequence: evt.sequence });
@@ -583,38 +699,15 @@ apiV1Router.post('/activities/:id/rewind', async (req: Request, res: Response, n
   }
 });
 
-// GET /api/v1/activities/:id/events
-// Item 8: Safe event polling using sinceSequence
-apiV1Router.get('/activities/:id/events', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const sinceSeqStr = req.query.sinceSequence as string | undefined;
-    const sinceSequence = sinceSeqStr ? parseInt(sinceSeqStr, 10) : 0;
-    const events = await eventRepo.getEventsSince(req.params.id, isNaN(sinceSequence) ? 0 : sinceSequence);
-    sendSuccess(req, res, events);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// GET /api/v1/activities/:id/checkpoints
-apiV1Router.get('/activities/:id/checkpoints', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const list = await checkpointRepo.findByActivityId(req.params.id);
-    sendSuccess(req, res, list);
-  } catch (err) {
-    next(err);
-  }
-});
-
 // ==========================================
-// 4. SESSIONS & PROMPT EXECUTION (Item 10 & 11)
+// 4. SESSIONS & EVENTS
 // ==========================================
 
 // GET /api/v1/sessions
 apiV1Router.get('/sessions', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const list = await sessionRepo.findAll();
-    sendSuccess(req, res, list);
+    const sessions = await sessionRepo.findAll();
+    sendSuccess(req, res, sessions);
   } catch (err) {
     next(err);
   }
@@ -623,100 +716,77 @@ apiV1Router.get('/sessions', async (req: Request, res: Response, next: NextFunct
 // GET /api/v1/sessions/:id
 apiV1Router.get('/sessions/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const s = await sessionRepo.findById(req.params.id);
-    if (!s) return sendError(req, res, 'NOT_FOUND', 'Session not found', 404);
-    sendSuccess(req, res, s);
+    const session = await sessionRepo.findById(req.params.id);
+    if (!session) return sendError(req, res, 'NOT_FOUND', 'Session not found', 404);
+    sendSuccess(req, res, session);
   } catch (err) {
     next(err);
   }
 });
 
 // POST /api/v1/sessions/:id/prompt
-// Item 10: Server-side mock execution pipeline
 apiV1Router.post('/sessions/:id/prompt', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { prompt, planMode } = req.body;
-    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
-      return sendError(req, res, 'EMPTY_PROMPT', 'Prompt content cannot be empty', 400);
-    }
-
     const session = await sessionRepo.findById(req.params.id);
     if (!session) return sendError(req, res, 'NOT_FOUND', 'Session not found', 404);
 
-    // Append PROMPT_RECEIVED event
+    if (!isDemoMode) {
+      return sendError(
+        req,
+        res,
+        'EXECUTION_BACKEND_NOT_CONFIGURED',
+        'Claude execution backend is not configured.',
+        400
+      );
+    }
+
+    const { prompt, planMode } = req.body;
+    if (!prompt) return sendError(req, res, 'MISSING_PROMPT', 'Prompt text is required', 400);
+
     const promptEvt = await eventRepo.append({
       activityId: session.activityId,
       timestamp: new Date().toISOString(),
       type: EventType.PROMPT_RECEIVED,
-      payload: { prompt: prompt.trim(), planMode: Boolean(planMode) },
+      payload: { prompt, planMode: Boolean(planMode) },
     });
 
-    // Update tokens and activity action
-    await sessionRepo.update(session.id, {
-      tokensIn: session.tokensIn + prompt.length * 2,
-      tokensOut: session.tokensOut + 180,
-      cost: session.cost + 0.005,
-    });
+    sendSuccess(req, res, { ack: true, promptEventId: promptEvt.id }, 202);
+  } catch (err) {
+    next(err);
+  }
+});
 
-    await activityRepo.update(session.activityId, {
-      status: ActivityStatus.RUNNING,
-      currentAction: `Synthesizing prompt: "${prompt.slice(0, 30)}..."`,
-      lastEventSequence: promptEvt.sequence,
-    });
+// GET /api/v1/activities/:id/events
+apiV1Router.get('/activities/:id/events', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sinceSeq = parseInt(req.query.since as string, 10) || 0;
+    const all = await eventRepo.findByActivityId(req.params.id);
+    const filtered = all.filter((e) => e.sequence > sinceSeq).sort((a, b) => a.sequence - b.sequence);
+    sendSuccess(req, res, filtered);
+  } catch (err) {
+    next(err);
+  }
+});
 
-    // Deterministically simulate remote execution steps on server
-    setTimeout(async () => {
-      try {
-        await eventRepo.append({
-          activityId: session.activityId,
-          timestamp: new Date().toISOString(),
-          type: EventType.ASSISTANT_MESSAGE,
-          payload: { content: `Acknowledged instruction: "${prompt.trim()}". Simulating execution plan on remote host.` },
-        });
-
-        await eventRepo.append({
-          activityId: session.activityId,
-          timestamp: new Date().toISOString(),
-          type: EventType.TOOL_STARTED,
-          payload: { tool: 'InspectWorkspace', target: session.projectId },
-        });
-
-        await eventRepo.append({
-          activityId: session.activityId,
-          timestamp: new Date().toISOString(),
-          type: EventType.TOOL_COMPLETED,
-          payload: { tool: 'InspectWorkspace', status: 'SUCCESS' },
-        });
-
-        const act = await activityRepo.findById(session.activityId);
-        if (act && act.status === ActivityStatus.RUNNING) {
-          const latestSeq = await eventRepo.getLatestSequence(act.id);
-          await activityRepo.update(act.id, {
-            currentAction: 'Idle (Mock execution step completed)',
-            nextAction: 'Ready for operator instructions',
-            lastEventSequence: latestSeq,
-          });
-        }
-      } catch (e) {
-        console.error('Async mock execution error:', e);
-      }
-    }, 100);
-
-    sendSuccess(req, res, { ack: true, promptEventId: promptEvt.id, sequence: promptEvt.sequence });
+// GET /api/v1/activities/:id/checkpoints
+apiV1Router.get('/activities/:id/checkpoints', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const checkpoints = await checkpointRepo.findByActivityId(req.params.id);
+    sendSuccess(req, res, checkpoints);
   } catch (err) {
     next(err);
   }
 });
 
 // ==========================================
-// 5. APPROVALS API & ENFORCEMENT (Item 15 & 16)
+// 5. APPROVALS (Authoritative Enforcement)
 // ==========================================
 
 // GET /api/v1/approvals
 apiV1Router.get('/approvals', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const activityId = req.query.activityId as string | undefined;
-    const list = await approvalRepo.findAll(activityId);
+    const list = await approvalRepo.findPending(activityId);
     sendSuccess(req, res, list);
   } catch (err) {
     next(err);
@@ -726,9 +796,9 @@ apiV1Router.get('/approvals', async (req: Request, res: Response, next: NextFunc
 // GET /api/v1/approvals/:id
 apiV1Router.get('/approvals/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const a = await approvalRepo.findById(req.params.id);
-    if (!a) return sendError(req, res, 'NOT_FOUND', 'Approval not found', 404);
-    sendSuccess(req, res, a);
+    const found = await approvalRepo.findById(req.params.id);
+    if (!found) return sendError(req, res, 'NOT_FOUND', 'Approval not found', 404);
+    sendSuccess(req, res, found);
   } catch (err) {
     next(err);
   }
@@ -738,13 +808,13 @@ apiV1Router.get('/approvals/:id', async (req: Request, res: Response, next: Next
 apiV1Router.post('/approvals', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { activityId, projectId, riskLevel, actionType, title, description, commandOrDiff, parameters } = req.body;
-    if (!title || !actionType) {
-      return sendError(req, res, 'INVALID_APPROVAL', 'Title and actionType are required', 400);
+    if (!activityId || !title || !actionType) {
+      return sendError(req, res, 'MISSING_FIELDS', 'activityId, actionType, and title are required', 400);
     }
 
     const created = await approvalRepo.create({
-      id: `appr-${Date.now().toString().slice(-4)}`,
-      activityId: activityId || 'act-generic',
+      id: `appr-${Date.now().toString(36)}`,
+      activityId,
       projectId: projectId || 'proj-01',
       riskLevel: riskLevel || RiskLevel.CONFIRM,
       actionType,
@@ -756,15 +826,6 @@ apiV1Router.post('/approvals', async (req: Request, res: Response, next: NextFun
       requestedAt: new Date().toISOString(),
     });
 
-    if (activityId) {
-      await eventRepo.append({
-        activityId,
-        timestamp: new Date().toISOString(),
-        type: EventType.APPROVAL_REQUESTED,
-        payload: { approvalId: created.id, title, riskLevel: created.riskLevel },
-      });
-    }
-
     sendSuccess(req, res, created, 201);
   } catch (err) {
     next(err);
@@ -772,49 +833,44 @@ apiV1Router.post('/approvals', async (req: Request, res: Response, next: NextFun
 });
 
 // POST /api/v1/approvals/:id/resolve
-// Item 16: Resolves approval server-side and automatically unblocks activity if approved
 apiV1Router.post('/approvals/:id/resolve', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status } = req.body;
-    if (status !== ApprovalStatus.APPROVED && status !== ApprovalStatus.REJECTED) {
-      return sendError(req, res, 'INVALID_STATUS', 'Status must be APPROVED or REJECTED', 400);
+    if (!status || !Object.values(ApprovalStatus).includes(status)) {
+      return sendError(req, res, 'INVALID_STATUS', 'Valid status (APPROVED / REJECTED) is required', 400);
     }
 
     const existing = await approvalRepo.findById(req.params.id);
-    if (!existing) return sendError(req, res, 'NOT_FOUND', 'Approval not found', 404);
-    if (existing.status !== ApprovalStatus.PENDING) {
-      return sendError(req, res, 'ALREADY_RESOLVED', `Approval is already ${existing.status}`, 409);
+    if (!existing) {
+      return sendError(req, res, 'APPROVAL_NOT_FOUND', 'Approval record does not exist', 404);
     }
 
-    const resolved = await approvalRepo.resolve(
-      req.params.id,
-      status,
-      req.user?.id || 'demo-operator'
-    );
+    const resolved = await approvalRepo.resolve(req.params.id, status, req.user?.id || 'phase1-demo-user');
+    if (!resolved) {
+      return sendError(req, res, 'NOT_FOUND', 'Approval not found for resolution', 404);
+    }
 
-    if (resolved?.activityId) {
-      const evt = await eventRepo.append({
-        activityId: resolved.activityId,
-        timestamp: new Date().toISOString(),
-        type: EventType.APPROVAL_RESOLVED,
-        payload: { approvalId: resolved.id, status, actionType: resolved.actionType },
-      });
+    const evt = await eventRepo.append({
+      activityId: resolved.activityId,
+      timestamp: new Date().toISOString(),
+      type: EventType.APPROVAL_RESOLVED,
+      payload: { approvalId: resolved.id, status, actionType: resolved.actionType },
+    });
 
-      const act = await activityRepo.findById(resolved.activityId);
-      if (act) {
-        if (status === ApprovalStatus.APPROVED && act.status === ActivityStatus.WAITING_APPROVAL) {
-          await activityRepo.update(act.id, {
-            status: ActivityStatus.RUNNING,
-            currentAction: `Executing authorized action: ${resolved.actionType}`,
-            blocker: null,
-            lastEventSequence: evt.sequence,
-          });
-        } else if (status === ApprovalStatus.REJECTED) {
-          await activityRepo.update(act.id, {
-            currentAction: `Action aborted: ${resolved.actionType} was rejected by operator`,
-            lastEventSequence: evt.sequence,
-          });
-        }
+    const act = await activityRepo.findById(resolved.activityId);
+    if (act) {
+      if (status === ApprovalStatus.APPROVED && act.status === ActivityStatus.WAITING_APPROVAL) {
+        await activityRepo.update(act.id, {
+          status: ActivityStatus.RUNNING,
+          currentAction: `Executing authorized action: ${resolved.actionType}`,
+          blocker: null,
+          lastEventSequence: evt.sequence,
+        });
+      } else if (status === ApprovalStatus.REJECTED) {
+        await activityRepo.update(act.id, {
+          currentAction: `Action aborted: ${resolved.actionType} was rejected`,
+          lastEventSequence: evt.sequence,
+        });
       }
     }
 
@@ -825,7 +881,7 @@ apiV1Router.post('/approvals/:id/resolve', async (req: Request, res: Response, n
 });
 
 // ==========================================
-// 6. SAFE FILES API (Item 20)
+// 6. SAFE FILES API (Strict Path Safety)
 // ==========================================
 
 // GET /api/v1/projects/:id/files
@@ -942,7 +998,99 @@ apiV1Router.delete('/projects/:id/files/*', async (req: Request, res: Response, 
 });
 
 // ==========================================
-// 7. GITHUB, MCP, MODELS, MONITORING, BACKUPS, JOBS, ADMIN
+// 7. TERMINAL (Truthful & Remote-Ready)
+// ==========================================
+
+// POST /api/v1/terminal/session
+apiV1Router.post('/terminal/session', (req: Request, res: Response) => {
+  if (!isDemoMode) {
+    const session: TerminalSession = {
+      sessionId: 'none',
+      status: 'NOT_CONFIGURED',
+      pty: '',
+      cols: req.body.cols || 80,
+      rows: req.body.rows || 24,
+      cwd: '',
+      connectedAt: '',
+      message: 'Remote terminal execution is not configured',
+    };
+    return sendSuccess(req, res, session);
+  }
+
+  const sessionId = `term-sess-${Date.now().toString(36)}`;
+  const session: TerminalSession = {
+    sessionId,
+    status: 'CONNECTED',
+    pty: '/dev/pts/3 (Simulated)',
+    cols: req.body.cols || 80,
+    rows: req.body.rows || 24,
+    cwd: '/workspace/demo',
+    connectedAt: new Date().toISOString(),
+  };
+
+  const initialOutputs: TerminalOutput[] = [
+    {
+      sessionId,
+      sequence: 1,
+      data: '\x1b[33m[PHASE 1 DEMO]\x1b[0m Remote terminal simulated PTY connected.\r\n',
+      timestamp: new Date().toISOString(),
+    },
+  ];
+
+  terminalSessionsStore.set(sessionId, { session, outputs: initialOutputs });
+  sendSuccess(req, res, session, 201);
+});
+
+// POST /api/v1/terminal/input
+apiV1Router.post('/terminal/input', (req: Request, res: Response) => {
+  const { sessionId, input } = req.body;
+  if (!sessionId) return sendError(req, res, 'MISSING_SESSION_ID', 'sessionId is required', 400);
+
+  const entry = terminalSessionsStore.get(sessionId);
+  if (!entry) {
+    if (!isDemoMode) {
+      return sendError(req, res, 'NOT_CONFIGURED', 'Remote terminal is not configured', 400);
+    }
+  } else {
+    const nextSeq = entry.outputs.length + 1;
+    entry.outputs.push({
+      sessionId,
+      sequence: nextSeq,
+      data: `$ ${input}\r\n[simulated command output]\r\n`,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  sendSuccess(req, res, { acknowledged: true });
+});
+
+// GET /api/v1/terminal/:sessionId/output
+apiV1Router.get('/terminal/:sessionId/output', (req: Request, res: Response) => {
+  const entry = terminalSessionsStore.get(req.params.sessionId);
+  const sinceSeq = parseInt(req.query.since as string, 10) || 0;
+
+  if (!entry) {
+    return sendSuccess(req, res, []);
+  }
+
+  const filtered = entry.outputs.filter((o) => o.sequence > sinceSeq);
+  sendSuccess(req, res, filtered);
+});
+
+// POST /api/v1/terminal/:sessionId/resize
+apiV1Router.post('/terminal/:sessionId/resize', (req: Request, res: Response) => {
+  const { cols, rows } = req.body;
+  sendSuccess(req, res, { cols: cols || 80, rows: rows || 24 });
+});
+
+// POST /api/v1/terminal/:sessionId/close
+apiV1Router.post('/terminal/:sessionId/close', (req: Request, res: Response) => {
+  terminalSessionsStore.delete(req.params.sessionId);
+  sendSuccess(req, res, { closed: true });
+});
+
+// ==========================================
+// 8. GITHUB, MCP, MODELS, MONITORING, BACKUPS, JOBS, ADMIN
 // ==========================================
 
 // GitHub
@@ -951,6 +1099,9 @@ apiV1Router.get('/github/status', (req: Request, res: Response) => {
 });
 
 apiV1Router.post('/github/sync', (req: Request, res: Response) => {
+  if (!isDemoMode) {
+    return sendError(req, res, 'NOT_CONFIGURED', 'GitHub integration is not configured', 400);
+  }
   sendSuccess(req, res, { synced: true, latestCommitSha: '9f83a21' });
 });
 
@@ -965,15 +1116,16 @@ apiV1Router.post('/mcp', (req: Request, res: Response) => {
     schemaVersion: 1,
     id: `mcp-${Date.now().toString(36)}`,
     name: name || 'custom-mcp-server',
-    transport: transport || 'stdio',
-    status: HealthStatus.HEALTHY,
+    transport: transport === 'legacy-sse' ? 'legacy-sse' : transport === 'streamable-http' ? 'streamable-http' : 'stdio',
+    status: isDemoMode ? HealthStatus.HEALTHY : HealthStatus.NOT_CONFIGURED,
     version: '1.0.0',
     enabled: true,
-    health: 'OK',
+    health: isDemoMode ? 'OK' : 'NOT_CONFIGURED',
     toolsCount: 0,
     lastError: null,
     command: command || '',
-    description: description || '[PHASE 1 MOCK] Custom MCP server',
+    description: description || 'Configured MCP server',
+    origin: isDemoMode ? 'DEMO' : 'LIVE',
   };
   mcpServersStore.push(newServer);
   sendSuccess(req, res, newServer, 201);
@@ -985,7 +1137,6 @@ apiV1Router.post('/mcp/:id/toggle', (req: Request, res: Response) => {
 
   const enabled = req.body.enabled ?? !target.enabled;
   target.enabled = enabled;
-  target.status = enabled ? HealthStatus.HEALTHY : HealthStatus.UNKNOWN;
   sendSuccess(req, res, target);
 });
 
@@ -993,8 +1144,6 @@ apiV1Router.post('/mcp/:id/restart', (req: Request, res: Response) => {
   const target = mcpServersStore.find((s) => s.id === req.params.id);
   if (!target) return sendError(req, res, 'NOT_FOUND', 'MCP server not found', 404);
 
-  target.status = HealthStatus.HEALTHY;
-  target.health = 'OK';
   target.lastError = null;
   sendSuccess(req, res, target);
 });
@@ -1002,7 +1151,7 @@ apiV1Router.post('/mcp/:id/restart', (req: Request, res: Response) => {
 // Models & Routing
 apiV1Router.get('/models', (req: Request, res: Response) => {
   sendSuccess(req, res, {
-    profiles: DEMO_MODEL_PROFILES,
+    profiles: VERIFIED_REFERENCE_MODELS,
     routingPolicies: routingPoliciesStore,
   });
 });
@@ -1025,6 +1174,10 @@ apiV1Router.get('/jobs', (req: Request, res: Response) => {
 });
 
 apiV1Router.post('/jobs', (req: Request, res: Response) => {
+  if (!isDemoMode) {
+    return sendError(req, res, 'NOT_CONFIGURED', 'Execution host is not configured to run jobs', 400);
+  }
+
   const { type, title, command } = req.body;
   const newJob: BackgroundJob = {
     schemaVersion: 1,
@@ -1036,6 +1189,7 @@ apiV1Router.post('/jobs', (req: Request, res: Response) => {
     startedAt: new Date().toISOString(),
     durationMs: 500,
     command: command || 'workstation-runner --task test',
+    origin: 'DEMO',
   };
   jobsStore.unshift(newJob);
   sendSuccess(req, res, newJob, 201);
@@ -1049,9 +1203,51 @@ apiV1Router.post('/jobs/:id/cancel', (req: Request, res: Response) => {
 
 // Monitoring
 apiV1Router.get('/monitoring', (req: Request, res: Response) => {
+  if (isDemoMode) {
+    return sendSuccess(req, res, {
+      resources: {
+        cpuPercent: 28.4,
+        cpuCores: 4,
+        cpuLoadAvg: [1.12, 0.94, 0.81],
+        memoryUsedGb: 6.8,
+        memoryTotalGb: 24.0,
+        memoryPercent: 28.3,
+        diskUsedGb: 44.2,
+        diskTotalGb: 200.0,
+        diskPercent: 22.1,
+        uptimeSeconds: 1248920,
+        uptimeFormatted: '14 days, 11 hours',
+        osName: 'Oracle Linux 9.4 (ARM)',
+        kernelVersion: '5.15.0',
+        origin: 'DEMO',
+      },
+      services: [
+        { name: 'Simulated Host', status: HealthStatus.HEALTHY, latencyMs: 14, lastChecked: 'now', origin: 'DEMO' },
+      ],
+    });
+  }
+
   sendSuccess(req, res, {
-    resources: DEMO_RESOURCE_SUMMARY,
-    services: DEMO_SYSTEM_SERVICES,
+    resources: {
+      cpuPercent: null,
+      cpuCores: null,
+      cpuLoadAvg: null,
+      memoryUsedGb: null,
+      memoryTotalGb: null,
+      memoryPercent: null,
+      diskUsedGb: null,
+      diskTotalGb: null,
+      diskPercent: null,
+      uptimeSeconds: null,
+      uptimeFormatted: null,
+      osName: null,
+      kernelVersion: null,
+      origin: 'UNAVAILABLE',
+    },
+    services: [
+      { name: 'Control Plane Server', status: HealthStatus.HEALTHY, latencyMs: 1, lastChecked: 'now', origin: 'LIVE' },
+      { name: 'Remote Workstation Host', status: HealthStatus.NOT_CONFIGURED, latencyMs: null, message: 'Unconfigured', lastChecked: 'never', origin: 'UNAVAILABLE' },
+    ],
   });
 });
 
@@ -1061,22 +1257,31 @@ apiV1Router.get('/backups', (req: Request, res: Response) => {
 });
 
 apiV1Router.post('/backups', (req: Request, res: Response) => {
+  if (!isDemoMode) {
+    return sendError(req, res, 'NOT_CONFIGURED', 'Backup system is not configured', 400);
+  }
   sendSuccess(req, res, { jobId: `job-bk-${Date.now()}`, status: 'STARTED' });
 });
 
 apiV1Router.post('/backups/verify', (req: Request, res: Response) => {
-  sendSuccess(req, res, { verified: true, message: 'All mock backup blocks verified against sha256 checksums.' });
+  if (!isDemoMode) {
+    return sendError(req, res, 'NOT_CONFIGURED', 'Backup system is not configured', 400);
+  }
+  sendSuccess(req, res, { verified: true, message: 'Phase 1 simulated backup verification passed.' });
 });
 
 apiV1Router.post('/backups/restore-test', (req: Request, res: Response) => {
-  sendSuccess(req, res, { restored: true, message: 'Synthetic sandbox restore test passed in 1.4s.' });
+  if (!isDemoMode) {
+    return sendError(req, res, 'NOT_CONFIGURED', 'Backup system is not configured', 400);
+  }
+  sendSuccess(req, res, { restored: true, message: 'Phase 1 simulated restore test passed.' });
 });
 
 // Admin (Privileged)
 apiV1Router.post('/admin/reboot', requireRole('OWNER'), (req: Request, res: Response) => {
   sendSuccess(req, res, {
     scheduled: true,
-    message: '[PHASE 1 PREVIEW] Remote host VM reboot simulated. Offline duration: ~15s.',
+    message: '[PHASE 1 PREVIEW] Remote host VM reboot simulated.',
   });
 });
 
@@ -1088,9 +1293,8 @@ apiV1Router.post('/admin/diagnostic', (req: Request, res: Response) => {
   sendSuccess(req, res, {
     status: 'HEALTHY',
     reports: [
-      'Phase 1 In-Memory Persistence: Healthy (6 active repositories)',
-      'Event Journal Sequence: Continuous and monotonic',
-      'Memory Cgroup Sandbox: Simulated isolation OK',
+      `Control Plane HTTP Gateway: Operational (${process.uptime().toFixed(1)}s uptime)`,
+      `Phase 1 In-Memory Persistence: ${isDemoMode ? 'Demo Mode Active' : 'Empty Mode Active'}`,
       'API Error Boundary: Operational with typed sanitization',
     ],
   });

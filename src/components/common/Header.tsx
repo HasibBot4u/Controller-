@@ -116,7 +116,7 @@ export const Header: React.FC<HeaderProps> = ({ title }) => {
             title="Active project context"
           >
             <Layers className="w-3.5 h-3.5 text-amber-400" />
-            <span className="max-w-[70px] xs:max-w-[110px] truncate">{selectedProjectId}</span>
+            <span className="max-w-[70px] xs:max-w-[110px] truncate">{selectedProjectId || 'No Project'}</span>
           </button>
 
           {/* Refresh Button */}

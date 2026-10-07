@@ -87,14 +87,16 @@ export const HomeScreen: React.FC = () => {
       {/* Thin-client Remote Banner */}
       <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-slate-500" />
           <div>
             <div className="font-mono font-semibold text-slate-200 flex items-center gap-2">
-              <span>Remote Workstation Host (Phase 1 Preview)</span>
-              <span className="text-[10px] text-emerald-400 font-normal">Active</span>
+              <span>Remote Execution Host</span>
+              <span className="text-[10px] text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30">
+                NOT_CONFIGURED
+              </span>
             </div>
             <p className="text-[11px] text-slate-400 hidden xs:block">
-              Phone is thin client • Zero local workload execution • Persistence: IN-MEMORY
+              Control Plane: HEALTHY • Thin Client • Persistence: IN_MEMORY — PHASE 1
             </p>
           </div>
         </div>
@@ -332,13 +334,15 @@ export const HomeScreen: React.FC = () => {
             </div>
             <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block mb-0.5">Today Cost</span>
-              <span className="font-semibold text-emerald-400">${aiSummary.todayEstimatedCost.toFixed(2)}</span>
+              <span className="font-semibold text-emerald-400">
+                ${(aiSummary.todayEstimatedCost ?? 0).toFixed(2)}
+              </span>
             </div>
           </div>
 
           <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-400">
-            <span>Weekly: ${aiSummary.weeklyCost.toFixed(2)}</span>
-            <span>Monthly Run-rate: ${aiSummary.monthlyCost.toFixed(2)}</span>
+            <span>Weekly: ${(aiSummary.weeklyCost ?? 0).toFixed(2)}</span>
+            <span>Monthly Run-rate: ${(aiSummary.monthlyCost ?? 0).toFixed(2)}</span>
           </div>
         </div>
       </div>

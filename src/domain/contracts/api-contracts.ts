@@ -16,7 +16,8 @@ import {
   PendingApproval,
   Checkpoint,
   SystemServiceStatus,
-  ServerResourceSummary
+  ServerResourceSummary,
+  HealthStatusResponse,
 } from '../models/index.ts';
 import { ActivityStatus, ApprovalStatus, RiskLevel } from '../enums/index.ts';
 
@@ -29,12 +30,7 @@ export interface ApiResponse<T> {
 }
 
 export interface HealthApi {
-  getHealth(): Promise<ApiResponse<{
-    status: 'HEALTHY' | 'DEGRADED' | 'UNAVAILABLE';
-    version: string;
-    uptime: number;
-    services: SystemServiceStatus[];
-  }>>;
+  getHealth(): Promise<ApiResponse<HealthStatusResponse>>;
 }
 
 export interface DashboardApi {
@@ -64,7 +60,6 @@ export interface ActivitiesApi {
   resumeActivity(id: string): Promise<ApiResponse<Activity>>;
   forkActivity(id: string): Promise<ApiResponse<Activity>>;
   rewindActivity(id: string, checkpointId: string): Promise<ApiResponse<Activity>>;
-  resolveApproval(id: string, status: ApprovalStatus): Promise<ApiResponse<PendingApproval>>;
 }
 
 export interface SessionsApi {
@@ -81,10 +76,10 @@ export interface EventsApi {
 export interface FilesApi {
   getFiles(projectId: string, directoryPath?: string): Promise<ApiResponse<FileItem[]>>;
   getFileContent(projectId: string, filePath: string): Promise<ApiResponse<FileItem>>;
-  saveFileContent(projectId: string, filePath: string, content: string): Promise<ApiResponse<{ success: boolean; path: string; isModified: boolean }>>;
+  saveFileContent(projectId: string, filePath: string, content: string): Promise<ApiResponse<FileItem>>;
   createFile(projectId: string, filePath: string, isDirectory: boolean): Promise<ApiResponse<FileItem>>;
-  renameFile(projectId: string, oldPath: string, newPath: string): Promise<ApiResponse<{ success: boolean; newPath: string }>>;
-  deleteFile(projectId: string, filePath: string): Promise<ApiResponse<{ success: boolean }>>;
+  renameFile(projectId: string, oldPath: string, newPath: string): Promise<ApiResponse<FileItem>>;
+  deleteFile(projectId: string, filePath: string): Promise<ApiResponse<{ success: boolean; deletedPath: string }>>;
 }
 
 export interface TerminalApi {
