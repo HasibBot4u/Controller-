@@ -1,0 +1,6 @@
+{
+  "name": "Claude Cloud Control Center",
+  "description": "Mobile-first thin-client remote control plane for cloud-hosted AI development workstations and Claude Code execution.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
