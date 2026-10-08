@@ -440,7 +440,7 @@ apiV1Router.post('/activities', async (req: Request, res: Response, next: NextFu
     await eventRepo.append({
       activityId: id,
       timestamp: now,
-      type: EventType.SESSION_STARTED,
+      type: EventType.ACTIVITY_CREATED,
       payload: { title, model: created.model, provider: created.provider },
     });
 
@@ -674,6 +674,14 @@ apiV1Router.post('/activities/:id/rewind', async (req: Request, res: Response, n
     const chk = await checkpointRepo.findById(checkpointId);
     if (!chk) return sendError(req, res, 'CHECKPOINT_NOT_FOUND', `Checkpoint ${checkpointId} not found`, 404);
 
+    if (chk.activityId !== act.id) {
+      return sendError(req, res, 'CHECKPOINT_ACTIVITY_MISMATCH', `Checkpoint ${checkpointId} belongs to activity ${chk.activityId}, not ${act.id}`, 400);
+    }
+
+    if (chk.projectId !== act.projectId) {
+      return sendError(req, res, 'CHECKPOINT_PROJECT_MISMATCH', `Checkpoint ${checkpointId} belongs to project ${chk.projectId}, not ${act.projectId}`, 400);
+    }
+
     assertActivityTransition(act.status, ActivityStatus.PAUSED);
 
     const updated = await activityRepo.update(act.id, {
@@ -759,7 +767,8 @@ apiV1Router.post('/sessions/:id/prompt', async (req: Request, res: Response, nex
 // GET /api/v1/activities/:id/events
 apiV1Router.get('/activities/:id/events', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const sinceSeq = parseInt(req.query.since as string, 10) || 0;
+    const queryVal = (req.query.sinceSequence || req.query.since) as string;
+    const sinceSeq = parseInt(queryVal, 10) || 0;
     const all = await eventRepo.findByActivityId(req.params.id);
     const filtered = all.filter((e) => e.sequence > sinceSeq).sort((a, b) => a.sequence - b.sequence);
     sendSuccess(req, res, filtered);
@@ -851,13 +860,13 @@ apiV1Router.post('/approvals/:id/resolve', async (req: Request, res: Response, n
     }
 
     const evt = await eventRepo.append({
-      activityId: resolved.activityId,
+      activityId: resolved.activityId || 'system',
       timestamp: new Date().toISOString(),
       type: EventType.APPROVAL_RESOLVED,
       payload: { approvalId: resolved.id, status, actionType: resolved.actionType },
     });
 
-    const act = await activityRepo.findById(resolved.activityId);
+    const act = resolved.activityId ? await activityRepo.findById(resolved.activityId) : null;
     if (act) {
       if (status === ApprovalStatus.APPROVED && act.status === ActivityStatus.WAITING_APPROVAL) {
         await activityRepo.update(act.id, {
@@ -1004,17 +1013,13 @@ apiV1Router.delete('/projects/:id/files/*', async (req: Request, res: Response, 
 // POST /api/v1/terminal/session
 apiV1Router.post('/terminal/session', (req: Request, res: Response) => {
   if (!isDemoMode) {
-    const session: TerminalSession = {
-      sessionId: 'none',
-      status: 'NOT_CONFIGURED',
-      pty: '',
-      cols: req.body.cols || 80,
-      rows: req.body.rows || 24,
-      cwd: '',
-      connectedAt: '',
-      message: 'Remote terminal execution is not configured',
-    };
-    return sendSuccess(req, res, session);
+    return sendError(
+      req,
+      res,
+      'NOT_CONFIGURED',
+      'Remote terminal execution backend is not configured.',
+      400
+    );
   }
 
   const sessionId = `term-sess-${Date.now().toString(36)}`;
@@ -1164,7 +1169,13 @@ apiV1Router.patch('/models/routing/:id', (req: Request, res: Response) => {
   const pol = routingPoliciesStore.find((p) => p.id === req.params.id);
   if (!pol) return sendError(req, res, 'NOT_FOUND', 'Routing policy not found', 404);
 
-  Object.assign(pol, req.body);
+  const { taskComplexity, targetProvider, targetModel, requiresApproval, description } = req.body;
+  if (taskComplexity !== undefined) pol.taskComplexity = taskComplexity;
+  if (targetProvider !== undefined) pol.targetProvider = targetProvider;
+  if (targetModel !== undefined) pol.targetModel = targetModel;
+  if (requiresApproval !== undefined) pol.requiresApproval = Boolean(requiresApproval);
+  if (description !== undefined) pol.description = description;
+
   sendSuccess(req, res, pol);
 });
 
@@ -1197,8 +1208,12 @@ apiV1Router.post('/jobs', (req: Request, res: Response) => {
 
 apiV1Router.post('/jobs/:id/cancel', (req: Request, res: Response) => {
   const job = jobsStore.find((j) => j.id === req.params.id);
-  if (job) job.status = 'FAILED';
-  sendSuccess(req, res, { cancelled: true });
+  if (!job) {
+    return sendError(req, res, 'NOT_FOUND', `Job ${req.params.id} not found`, 404);
+  }
+  job.status = 'CANCELLED';
+  job.cancelledAt = new Date().toISOString();
+  sendSuccess(req, res, { cancelled: true, job });
 });
 
 // Monitoring
@@ -1285,7 +1300,7 @@ apiV1Router.post('/admin/reboot', requireRole('OWNER'), (req: Request, res: Resp
   });
 });
 
-apiV1Router.post('/admin/services/:name/restart', requireRole('OWNER', 'OPERATOR'), (req: Request, res: Response) => {
+apiV1Router.post('/admin/services/:name/restart', requireRole('OPERATOR'), (req: Request, res: Response) => {
   sendSuccess(req, res, { restarted: true, service: req.params.name });
 });
 

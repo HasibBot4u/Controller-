@@ -24,11 +24,11 @@ export const ClaudeScreen: React.FC = () => {
   const { services, selectedProjectId, setSelectedProjectId, triggerRefresh, refreshKey } = useControlCenter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [selectedActivityId, setSelectedActivityId] = useState<string>('act-901');
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [session, setSession] = useState<ClaudeSession | null>(null);
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
   const [provider, setProvider] = useState<string>('Anthropic');
-  const [model, setModel] = useState<string>('claude-3-7-sonnet');
+  const [model, setModel] = useState<string>('claude-sonnet-5-5');
   const [planMode, setPlanMode] = useState<boolean>(true);
   const [approvalMode, setApprovalMode] = useState<'STRICT' | 'STANDARD' | 'PERMISSIVE'>('STANDARD');
   const [promptText, setPromptText] = useState('');
@@ -64,15 +64,23 @@ export const ClaudeScreen: React.FC = () => {
     let isMounted = true;
     latestSeqRef.current = 0;
 
+    if (!selectedActivityId) {
+      setSession(null);
+      setEvents([]);
+      return;
+    }
+
     services.sessionsApi.getSessions().then((res) => {
       if (!isMounted) return;
-      const found = res.data.find((s) => s.activityId === selectedActivityId) || res.data[0];
+      const found = res.data.find((s) => s.activityId === selectedActivityId);
       if (found) {
         setSession(found);
         setProvider(found.provider);
         setModel(found.model);
         setPlanMode(found.planMode);
         setApprovalMode(found.approvalMode);
+      } else {
+        setSession(null);
       }
     });
 
@@ -133,14 +141,16 @@ export const ClaudeScreen: React.FC = () => {
       setStatusMessage('Prompt accepted by remote session. Replaying execution stream...');
 
       // Immediately poll for new events
-      const res = await services.eventsApi.getActivityEvents(selectedActivityId, latestSeqRef.current);
-      if (res.data.length > 0) {
-        setEvents((prev) => {
-          const existingIds = new Set(prev.map((ev) => ev.id));
-          const newEvents = res.data.filter((ev) => !existingIds.has(ev.id));
-          return [...prev, ...newEvents];
-        });
-        latestSeqRef.current = Math.max(latestSeqRef.current, ...res.data.map((ev) => ev.sequence));
+      if (selectedActivityId) {
+        const res = await services.eventsApi.getActivityEvents(selectedActivityId, latestSeqRef.current);
+        if (res.data.length > 0) {
+          setEvents((prev) => {
+            const existingIds = new Set(prev.map((ev) => ev.id));
+            const newEvents = res.data.filter((ev) => !existingIds.has(ev.id));
+            return [...prev, ...newEvents];
+          });
+          latestSeqRef.current = Math.max(latestSeqRef.current, ...res.data.map((ev) => ev.sequence));
+        }
       }
     } catch (err: any) {
       setStatusMessage(`Error dispatching prompt: ${err?.message || 'Server error'}`);
@@ -152,6 +162,7 @@ export const ClaudeScreen: React.FC = () => {
   };
 
   const handleContractAction = async (action: string) => {
+    if (!selectedActivityId) return;
     setStatusMessage(`Dispatched action [${action}] to session on server`);
     try {
       if (action === 'Pause') await services.activitiesApi.pauseActivity(selectedActivityId);
@@ -204,7 +215,7 @@ export const ClaudeScreen: React.FC = () => {
               Active Activity:
             </label>
             <select
-              value={selectedActivityId}
+              value={selectedActivityId || ''}
               onChange={(e) => setSelectedActivityId(e.target.value)}
               className="w-full bg-black/50 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
             >
@@ -253,7 +264,7 @@ export const ClaudeScreen: React.FC = () => {
                     {m.model}
                   </option>
                 ))}
-              {modelProfiles.length === 0 && <option value="claude-3-7-sonnet">claude-3-7-sonnet</option>}
+              {modelProfiles.length === 0 && <option value="claude-sonnet-5-5">claude-sonnet-5-5</option>}
             </select>
           </div>
 

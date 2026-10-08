@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "Local control-plane project workspace metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 512 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "ARCHIVED", "SYNCING"] }
+      },
+      "required": ["id", "name", "ownerId", "updatedAt", "status"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "Remote development session activity track",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "status": { "type": "string", "maxLength": 64 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "projectId", "title", "status", "ownerId", "updatedAt"]
+    },
+    "PendingApproval": {
+      "title": "PendingApproval",
+      "description": "Server-authoritative approval gate",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "actionType": { "type": "string", "maxLength": 64 },
+        "riskLevel": { "type": "string", "maxLength": 32 },
+        "title": { "type": "string", "maxLength": 256 },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "CONSUMED"] },
+        "requestedBy": { "type": "string", "maxLength": 128 },
+        "requestedAt": { "type": "string" }
+      },
+      "required": ["id", "actionType", "riskLevel", "title", "status", "requestedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/projects/{projectId}": {
+      "schema": "Project",
+      "description": "User scoped project records"
+    },
+    "/users/{userId}/activities/{activityId}": {
+      "schema": "Activity",
+      "description": "User scoped activity records"
+    },
+    "/users/{userId}/approvals/{approvalId}": {
+      "schema": "PendingApproval",
+      "description": "User scoped approval queue"
+    }
+  }
+}

@@ -77,8 +77,10 @@ export const HomeScreen: React.FC = () => {
 
   const { systemStatus, serverSummary, workSummary, aiSummary, recentActivities, pendingApprovals } = dashboard;
 
-  const handleOpenActivity = (actId: string) => {
-    setSelectedActivityId(actId);
+  const handleOpenActivity = (actId?: string) => {
+    if (actId) {
+      setSelectedActivityId(actId);
+    }
     setCurrentScreen('activities');
   };
 

@@ -83,7 +83,7 @@ export const ActivitiesScreen: React.FC = () => {
         projectId: selectedProjectId || 'proj-01',
         title: newTitle,
         description: newDesc,
-        model: 'claude-3-7-sonnet',
+        model: 'claude-sonnet-5-5',
         provider: 'Anthropic',
       });
       setNewTitle('');

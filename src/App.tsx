@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { ControlCenterProvider, useControlCenter } from './context/ControlCenterContext.tsx';
+import { FirebaseAuthProvider } from './context/FirebaseAuthContext.tsx';
 import { Header } from './components/common/Header.tsx';
 import { BottomNav } from './components/common/BottomNav.tsx';
 import { OfflineBanner } from './components/common/OfflineBanner.tsx';
@@ -82,8 +83,10 @@ const MainContent: React.FC = () => {
 
 export default function App() {
   return (
-    <ControlCenterProvider>
-      <MainContent />
-    </ControlCenterProvider>
+    <FirebaseAuthProvider>
+      <ControlCenterProvider>
+        <MainContent />
+      </ControlCenterProvider>
+    </FirebaseAuthProvider>
   );
 }

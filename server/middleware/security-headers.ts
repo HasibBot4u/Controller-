@@ -8,9 +8,6 @@ export function securityHeadersMiddleware(req: Request, res: Response, next: Nex
   // Prevent MIME-sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
-  // Restrict framing
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-
   // Referrer Policy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 

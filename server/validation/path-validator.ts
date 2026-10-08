@@ -19,6 +19,11 @@ export function validateRelativeFilePath(rawPath: string): string {
     throw new FileSafetyError('Path must be a non-empty string');
   }
 
+  const MAX_PATH_LENGTH = 1024;
+  if (rawPath.length > MAX_PATH_LENGTH) {
+    throw new FileSafetyError(`File path exceeds maximum allowed length of ${MAX_PATH_LENGTH} characters`);
+  }
+
   // Reject null byte injection
   if (rawPath.includes('\0')) {
     throw new FileSafetyError('Path contains null bytes');

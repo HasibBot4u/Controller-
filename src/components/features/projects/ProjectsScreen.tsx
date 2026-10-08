@@ -223,11 +223,11 @@ export const ProjectsScreen: React.FC = () => {
                   Active Sessions: {projectSessions.filter((s) => s.projectId === selectedProject.id).length}
                 </div>
                 <div>
-                  Default Model: {projectSessions.find((s) => s.projectId === selectedProject.id)?.model || 'claude-3-7-sonnet'}
+                  Default Model: {projectSessions.find((s) => s.projectId === selectedProject.id)?.model || '—'}
                 </div>
-                <div>Sandbox: Phase 1 Mock Sandbox</div>
+                <div>Sandbox: Phase 1 Local Control Plane</div>
                 <div>
-                  Tokens: {projectSessions.filter((s) => s.projectId === selectedProject.id).reduce((sum, s) => sum + s.tokensIn + s.tokensOut, 0).toLocaleString()}
+                  Tokens: {projectSessions.filter((s) => s.projectId === selectedProject.id).reduce((sum, s) => sum + (s.tokensIn ?? 0) + (s.tokensOut ?? 0), 0).toLocaleString()}
                 </div>
               </div>
             </div>

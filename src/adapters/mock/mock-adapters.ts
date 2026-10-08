@@ -216,7 +216,7 @@ export class MockActivitiesApi implements ActivitiesApi {
     await this.eventRepo.append({
       id: `evt-${Date.now()}-1`,
       activityId: id,
-      type: EventType.SESSION_STARTED,
+      type: EventType.ACTIVITY_CREATED,
       timestamp: new Date().toISOString(),
       payload: { provider: data.provider, model: data.model, title: data.title },
     });
@@ -264,16 +264,16 @@ export class MockActivitiesApi implements ActivitiesApi {
 
   async stopActivity(id: string): Promise<ApiResponse<Activity>> {
     const updated = await this.activityRepo.update(id, {
-      status: ActivityStatus.COMPLETED,
-      currentAction: 'Stopped and cleanly finalized',
+      status: ActivityStatus.CANCELLED,
+      currentAction: 'Cancelled by user',
       nextAction: 'None',
     });
     await this.eventRepo.append({
       id: `evt-${Date.now()}`,
       activityId: id,
-      type: EventType.ACTIVITY_COMPLETED,
+      type: EventType.ACTIVITY_INTERRUPTED,
       timestamp: new Date().toISOString(),
-      payload: { reason: 'User requested stop' },
+      payload: { reason: 'User requested stop (cancelled)' },
     });
     return createResponse(updated!);
   }

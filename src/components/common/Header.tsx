@@ -1,5 +1,6 @@
 import React from 'react';
 import { useControlCenter, ScreenId } from '../../context/ControlCenterContext.tsx';
+import { useFirebaseAuth } from '../../context/FirebaseAuthContext.tsx';
 import {
   Server,
   RefreshCw,
@@ -8,6 +9,8 @@ import {
   ChevronRight,
   Shield,
   Layers,
+  User as UserIcon,
+  LogIn,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -23,7 +26,9 @@ export const Header: React.FC<HeaderProps> = ({ title }) => {
     triggerRefresh,
     selectedProjectId,
     connectionState,
+    serviceMode,
   } = useControlCenter();
+  const { currentUser, signIn } = useFirebaseAuth();
 
   const getScreenDisplayName = (screen: ScreenId): string => {
     switch (screen) {
@@ -83,6 +88,11 @@ export const Header: React.FC<HeaderProps> = ({ title }) => {
                 <span className="text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                   CONTROL
                 </span>
+                {serviceMode === 'mock' && (
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                    DEMO
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-mono text-slate-400">
                 <span
@@ -91,7 +101,11 @@ export const Header: React.FC<HeaderProps> = ({ title }) => {
                   }`}
                 />
                 <span className="truncate max-w-[140px] xs:max-w-[180px]">
-                  {connectionState === 'ONLINE' ? 'PHASE 1 (HTTP)' : connectionState}
+                  {serviceMode === 'mock'
+                    ? 'DEMO MODE'
+                    : connectionState === 'ONLINE'
+                    ? 'CONTROL PLANE'
+                    : connectionState}
                 </span>
               </div>
             </div>
@@ -128,6 +142,37 @@ export const Header: React.FC<HeaderProps> = ({ title }) => {
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
+
+          {/* Firebase Auth Pill */}
+          {currentUser ? (
+            <button
+              onClick={() => setCurrentScreen('settings')}
+              className="h-8 px-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] font-mono text-amber-300 flex items-center gap-1.5 hover:bg-amber-500/20 transition-colors cursor-pointer"
+              title={`Logged in as ${currentUser.email || currentUser.displayName || 'User'}`}
+            >
+              {currentUser.photoURL ? (
+                <img
+                  src={currentUser.photoURL}
+                  alt=""
+                  className="w-4 h-4 rounded-full border border-amber-400"
+                />
+              ) : (
+                <UserIcon className="w-3.5 h-3.5 text-amber-400" />
+              )}
+              <span className="hidden sm:inline max-w-[80px] truncate">
+                {currentUser.displayName?.split(' ')[0] || currentUser.email?.split('@')[0]}
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={signIn}
+              className="h-8 px-2.5 rounded-lg bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 text-[11px] font-mono text-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Sign in with Google"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign In</span>
+            </button>
+          )}
 
           {/* Theme Toggle */}
           <button

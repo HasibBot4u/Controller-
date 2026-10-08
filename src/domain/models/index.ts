@@ -71,18 +71,24 @@ export interface Checkpoint extends BaseEntity {
 
 export interface PendingApproval extends BaseEntity {
   id: string;
-  activityId: string;
-  projectId: string;
+  activityId?: string;
+  projectId?: string;
+  resourceType?: string;
+  resourceId?: string;
   riskLevel: RiskLevel;
   actionType: string;
   title: string;
   description: string;
   commandOrDiff?: string;
   parameters: Record<string, unknown>;
+  payloadHash?: string;
+  requestedBy?: string;
   status: ApprovalStatus;
   requestedAt: string;
+  expiresAt?: string;
   resolvedAt?: string;
   resolvedBy?: string;
+  consumedAt?: string;
 }
 
 export interface ClaudeSession extends BaseEntity {
@@ -286,9 +292,10 @@ export interface BackgroundJob extends BaseEntity {
   id: string;
   type: 'BUILD' | 'TEST' | 'BACKUP' | 'GIT_SYNC' | 'MCP_RESTART';
   title: string;
-  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
   progressPercent: number;
   startedAt: string;
+  cancelledAt?: string;
   durationMs: number;
   command: string;
   origin?: DataOrigin;
@@ -323,7 +330,8 @@ export interface AppError {
 export interface AuthPrincipal {
   id: string;
   role: 'OWNER' | 'OPERATOR' | 'VIEWER';
-  authMode: 'PHASE1_DEMO';
+  authMode: 'PHASE1_DEMO' | 'BEARER_TOKEN' | 'FIREBASE_AUTH';
+  email?: string;
 }
 
 export interface ApiResponse<T> {

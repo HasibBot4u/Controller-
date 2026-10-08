@@ -18,14 +18,41 @@ export class HttpApiError extends Error {
   }
 }
 
+let memoryToken: string | null = null;
+
+export function setClientAuthToken(token: string | null): void {
+  memoryToken = token;
+  try {
+    if (token) {
+      window.sessionStorage.setItem('control_plane_auth_token', token);
+    } else {
+      window.sessionStorage.removeItem('control_plane_auth_token');
+    }
+  } catch (_e) {}
+}
+
+export function getClientAuthToken(): string | null {
+  if (memoryToken) return memoryToken;
+  try {
+    const stored = window.sessionStorage.getItem('control_plane_auth_token');
+    if (stored) return stored;
+  } catch (_e) {}
+  if (import.meta.env.DEV) {
+    return 'dev-preview-token';
+  }
+  return null;
+}
+
 export async function requestJson<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   const url = endpoint.startsWith('http') ? endpoint : `/api/v1${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 
+  const token = getClientAuthToken();
   const headers: Record<string, string> = {
     'Accept': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     ...(options.headers as Record<string, string> || {}),
   };
 

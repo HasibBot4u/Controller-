@@ -40,11 +40,8 @@ export function createApp(): Express {
     next();
   });
 
-  // Phase 1 Authentication (Item 17)
-  app.use(authenticateRequest);
-
-  // Mount API v1 router (Item 19)
-  app.use('/api/v1', apiV1Router);
+  // Mount API v1 router with Phase 1 Authentication
+  app.use('/api/v1', authenticateRequest, apiV1Router);
 
   // API 404 handler
   app.all('/api/v1/*', notFoundHandler);

@@ -23,7 +23,7 @@ export const VERIFIED_REFERENCE_MODELS: ModelProfile[] = [
     toolCalling: true,
     streaming: true,
     thinkingSupport: true,
-    contextWindow: 200000,
+    contextWindow: 1000000,
     priority: 1,
   },
   {
@@ -41,7 +41,7 @@ export const VERIFIED_REFERENCE_MODELS: ModelProfile[] = [
     toolCalling: true,
     streaming: true,
     thinkingSupport: true,
-    contextWindow: 200000,
+    contextWindow: 1000000,
     priority: 2,
   },
   {
@@ -59,7 +59,7 @@ export const VERIFIED_REFERENCE_MODELS: ModelProfile[] = [
     toolCalling: true,
     streaming: true,
     thinkingSupport: true,
-    contextWindow: 200000,
+    contextWindow: 1000000,
     priority: 3,
   },
   {
@@ -68,7 +68,7 @@ export const VERIFIED_REFERENCE_MODELS: ModelProfile[] = [
     provider: 'Anthropic',
     displayName: 'Claude Haiku 4.5',
     alias: 'haiku',
-    modelId: 'claude-haiku-4-5',
+    modelId: 'claude-haiku-4-5-20251001',
     status: 'REFERENCE_ONLY',
     origin: 'VERIFIED_REFERENCE',
     verifiedAt: '2026-10-07T00:00:00Z',
