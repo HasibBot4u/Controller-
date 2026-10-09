@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const FilesScreen: React.FC = () => {
-  const { services, selectedProjectId, requestApproval } = useControlCenter();
+  const { services, selectedProjectId, requestApproval, refreshKey } = useControlCenter();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,7 +55,7 @@ export const FilesScreen: React.FC = () => {
 
   useEffect(() => {
     loadFiles();
-  }, [activeProjId, services]);
+  }, [activeProjId, services, refreshKey]);
 
   const handleOpenFile = (file: FileItem) => {
     if (file.isDirectory) return;

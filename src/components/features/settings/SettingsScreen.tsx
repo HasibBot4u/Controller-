@@ -37,6 +37,7 @@ export const SettingsScreen: React.FC = () => {
     selectedProjectId,
     setSelectedProjectId,
     triggerRefresh,
+    refreshKey,
   } = useControlCenter();
 
   const {
@@ -69,7 +70,7 @@ export const SettingsScreen: React.FC = () => {
 
   useEffect(() => {
     fetchServerHealth();
-  }, []);
+  }, [refreshKey]);
 
   const handleTestPing = async () => {
     setTestingPing(true);

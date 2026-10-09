@@ -65,7 +65,7 @@ export const ProjectsScreen: React.FC = () => {
         setProjectActivities(res.data);
       });
     }
-  }, [selectedProject, services]);
+  }, [selectedProject, services, refreshKey]);
 
   const handleSelectProject = (p: Project) => {
     setSelectedProject(p);

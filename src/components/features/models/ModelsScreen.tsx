@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const ModelsScreen: React.FC = () => {
-  const { services, triggerRefresh } = useControlCenter();
+  const { services, triggerRefresh, refreshKey } = useControlCenter();
   const [profiles, setProfiles] = useState<ModelProfile[]>([]);
   const [policies, setPolicies] = useState<TaskRoutingPolicy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +28,7 @@ export const ModelsScreen: React.FC = () => {
         setLoading(false);
       }
     );
-  }, [services]);
+  }, [services, refreshKey]);
 
   const handleUpdatePolicy = async (id: string, updates: Partial<TaskRoutingPolicy>) => {
     await services.modelsApi.updateRoutingPolicy(id, updates);

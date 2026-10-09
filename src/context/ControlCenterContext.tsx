@@ -47,6 +47,7 @@ interface ControlCenterContextType {
   serviceMode: ServiceMode;
   switchServiceMode: (mode: ServiceMode) => void;
   refreshKey: number;
+  refresh: () => void;
   triggerRefresh: () => void;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
@@ -166,6 +167,7 @@ export const ControlCenterProvider: React.FC<{ children: ReactNode }> = ({ child
   const triggerRefresh = () => {
     setRefreshKey((k) => k + 1);
   };
+  const refresh = triggerRefresh;
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
@@ -245,6 +247,7 @@ export const ControlCenterProvider: React.FC<{ children: ReactNode }> = ({ child
         serviceMode,
         switchServiceMode,
         refreshKey,
+        refresh,
         triggerRefresh,
         theme,
         toggleTheme,

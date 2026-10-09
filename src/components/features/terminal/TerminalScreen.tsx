@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export const TerminalScreen: React.FC = () => {
-  const { services, serviceMode } = useControlCenter();
+  const { services, serviceMode, refreshKey } = useControlCenter();
   const [session, setSession] = useState<TerminalSession | null>(null);
   const [outputs, setOutputs] = useState<TerminalOutput[]>([]);
   const [commandInput, setCommandInput] = useState('');
@@ -46,7 +46,7 @@ export const TerminalScreen: React.FC = () => {
 
   useEffect(() => {
     initTerminal();
-  }, [services]);
+  }, [services, refreshKey]);
 
   useEffect(() => {
     if (scrollRef.current) {

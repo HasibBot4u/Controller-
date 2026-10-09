@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 export const GitHubScreen: React.FC = () => {
-  const { services, requestApproval, serviceMode } = useControlCenter();
+  const { services, requestApproval, serviceMode, refreshKey } = useControlCenter();
   const [status, setStatus] = useState<GitHubRepoStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -20,7 +20,7 @@ export const GitHubScreen: React.FC = () => {
       setStatus(res.data);
       setLoading(false);
     });
-  }, [services]);
+  }, [services, refreshKey]);
 
   const handleSync = async () => {
     if (!status?.isConnected) return;
