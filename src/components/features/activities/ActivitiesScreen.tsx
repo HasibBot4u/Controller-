@@ -16,6 +16,8 @@ import {
   Layers,
 } from 'lucide-react';
 
+import { formatCurrency } from '../../../utils/format.ts';
+
 export const ActivitiesScreen: React.FC = () => {
   const {
     services,
@@ -204,7 +206,7 @@ export const ActivitiesScreen: React.FC = () => {
                   <span>{act.filesChangedCount} files changed</span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-400">
-                  <span>${(act.estimatedCost ?? 0).toFixed(2)}</span>
+                  <span>{formatCurrency(act.estimatedCost)}</span>
                   <span>•</span>
                   <span>
                     {new Date(act.updatedAt).toLocaleTimeString([], {

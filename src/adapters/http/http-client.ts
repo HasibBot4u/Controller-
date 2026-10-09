@@ -28,7 +28,9 @@ export function setClientAuthToken(token: string | null): void {
     } else {
       window.sessionStorage.removeItem('control_plane_auth_token');
     }
-  } catch (_e) {}
+  } catch (_e) {
+    // Ignore sessionStorage errors in restricted sandboxes
+  }
 }
 
 export function getClientAuthToken(): string | null {
@@ -36,7 +38,9 @@ export function getClientAuthToken(): string | null {
   try {
     const stored = window.sessionStorage.getItem('control_plane_auth_token');
     if (stored) return stored;
-  } catch (_e) {}
+  } catch (_e) {
+    // Ignore sessionStorage errors in restricted sandboxes
+  }
   if (import.meta.env.DEV) {
     return 'dev-preview-token';
   }

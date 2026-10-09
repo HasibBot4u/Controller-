@@ -7,15 +7,13 @@ import {
   ShieldCheck,
   RotateCcw,
   CheckCircle2,
-  Clock,
   Play,
   FileCheck,
-  History,
-  AlertCircle,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const BackupsScreen: React.FC = () => {
-  const { services, requestApproval, triggerRefresh, refreshKey } = useControlCenter();
+  const { services, requestApproval, triggerRefresh, refreshKey, serviceMode } = useControlCenter();
   const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -34,8 +32,8 @@ export const BackupsScreen: React.FC = () => {
       riskLevel: RiskLevel.CONFIRM,
       actionType: 'BACKUP_CREATE',
       title: 'Trigger Immediate Differential Backup',
-      description: 'Stream workspace snapshot to Oracle Object Storage container.',
-      parameters: { destination: backupStatus?.destination },
+      description: 'Stream workspace snapshot to backup storage container.',
+      parameters: { destination: backupStatus?.destination || 'backup-container' },
     });
 
     if (approved) {
@@ -74,6 +72,9 @@ export const BackupsScreen: React.FC = () => {
     return <div className="p-8 text-center text-slate-400 font-mono text-xs">Loading backup status...</div>;
   }
 
+  const isDemo = serviceMode === 'mock' || backupStatus.origin === 'DEMO';
+  const isConfigured = backupStatus.origin !== 'UNAVAILABLE' && backupStatus.checksumState !== 'NOT_CONFIGURED';
+
   return (
     <div className="p-3.5 sm:p-6 space-y-4 max-w-5xl mx-auto pb-28 font-mono text-xs animate-in fade-in duration-150">
       <div className="flex items-center justify-between gap-3">
@@ -83,10 +84,25 @@ export const BackupsScreen: React.FC = () => {
             <span>Backups & Checkpoints</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Durable disaster recovery to Oracle Object Storage
+            {isDemo
+              ? 'Durable disaster recovery snapshot storage [DEMO]'
+              : isConfigured
+              ? 'Durable disaster recovery to object storage'
+              : 'Backup service is not configured'}
           </p>
         </div>
+
+        <span className="text-[11px] px-2 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400">
+          {isDemo ? 'DEMO SIMULATION' : isConfigured ? 'HEALTHY' : 'NOT_CONFIGURED'}
+        </span>
       </div>
+
+      {!isConfigured && !isDemo && (
+        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2.5 text-slate-400 text-xs">
+          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <span>Backup service target is not configured. Snapshots and restore verification are offline.</span>
+        </div>
+      )}
 
       {actionMessage && (
         <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-300 flex items-center gap-2">
@@ -116,7 +132,7 @@ export const BackupsScreen: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800">
             <span className="text-[10px] text-slate-400 block mb-0.5">Backup Size</span>
-            <span className="font-semibold text-slate-100">{backupStatus.backupSize}</span>
+            <span className="font-semibold text-slate-100">{backupStatus.backupSize || '—'}</span>
           </div>
           <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800">
             <span className="text-[10px] text-slate-400 block mb-0.5">Next Schedule</span>
@@ -126,12 +142,12 @@ export const BackupsScreen: React.FC = () => {
           </div>
           <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800 col-span-2">
             <span className="text-[10px] text-slate-400 block mb-0.5">Last Restore Verification</span>
-            <span className="font-semibold text-emerald-400">{backupStatus.lastRestoreTest}</span>
+            <span className="font-semibold text-emerald-400">{backupStatus.lastRestoreTest || 'NOT_CONFIGURED'}</span>
           </div>
         </div>
 
         <div className="p-2.5 bg-black/40 border border-slate-800 rounded-lg text-[11px] text-slate-400 truncate">
-          Destination: {backupStatus.destination}
+          Destination: {backupStatus.destination || 'NOT_CONFIGURED'}
         </div>
 
         {/* Buttons Bar */}
@@ -167,30 +183,34 @@ export const BackupsScreen: React.FC = () => {
         </span>
 
         <div className="space-y-2">
-          {backupStatus.history.map((h) => (
-            <div
-              key={h.id}
-              className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80 flex items-center justify-between gap-2"
-            >
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-200">{h.id}</span>
-                  <span className="text-slate-500">•</span>
-                  <span className="text-slate-300">{h.size}</span>
+          {backupStatus.history.length === 0 ? (
+            <div className="text-slate-500 text-xs py-3 text-center">No snapshot archive history recorded.</div>
+          ) : (
+            backupStatus.history.map((h) => (
+              <div
+                key={h.id}
+                className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80 flex items-center justify-between gap-2"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-200">{h.id}</span>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-slate-300">{h.size}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5 truncate">{h.checksum}</div>
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5 truncate">{h.checksum}</div>
-              </div>
 
-              <div className="text-right">
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
-                  {h.status}
-                </span>
-                <div className="text-[10px] text-slate-500 mt-1">
-                  {new Date(h.timestamp).toLocaleDateString()}
+                <div className="text-right">
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    {h.status}
+                  </span>
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    {new Date(h.timestamp).toLocaleDateString()}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

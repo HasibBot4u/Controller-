@@ -185,7 +185,8 @@ export class InMemoryApprovalRepository implements ApprovalRepository {
 
   async resolve(id: string, status: ApprovalStatus, resolvedBy: string): Promise<PendingApproval | null> {
     const existing = this.approvals.get(id);
-    if (!existing) return null;
+    if (!existing || existing.status !== ApprovalStatus.PENDING) return null;
+    if (status !== ApprovalStatus.APPROVED && status !== ApprovalStatus.REJECTED) return null;
     const resolved: PendingApproval = {
       ...existing,
       status,
@@ -194,6 +195,18 @@ export class InMemoryApprovalRepository implements ApprovalRepository {
     };
     this.approvals.set(id, resolved);
     return { ...resolved };
+  }
+
+  async consume(id: string): Promise<PendingApproval | null> {
+    const existing = this.approvals.get(id);
+    if (!existing || existing.status !== ApprovalStatus.APPROVED) return null;
+    const consumed: PendingApproval = {
+      ...existing,
+      status: ApprovalStatus.CONSUMED,
+      consumedAt: new Date().toISOString(),
+    };
+    this.approvals.set(id, consumed);
+    return { ...consumed };
   }
 }
 

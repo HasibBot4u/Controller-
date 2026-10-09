@@ -42,7 +42,9 @@ export function validateRelativeFilePath(rawPath: string): string {
     throw new FileSafetyError('Path contains null bytes');
   }
 
-  if (decoded.includes('..') || rawPath.includes('..')) {
+  const decodedSegments = decoded.split(/[/\\]/);
+  const rawSegments = rawPath.split(/[/\\]/);
+  if (decodedSegments.some((seg) => seg === '..') || rawSegments.some((seg) => seg === '..')) {
     throw new FileSafetyError('Directory traversal sequences (..) are forbidden');
   }
 

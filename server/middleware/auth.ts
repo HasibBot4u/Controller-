@@ -24,14 +24,14 @@ declare global {
  */
 
 export function authenticateRequest(req: Request, res: Response, next: NextFunction): void {
-  // Non-API routes (HTML, JS, CSS, Vite assets) must pass through
-  if (!req.path.startsWith('/api')) {
-    next();
-    return;
-  }
-
   // Public endpoints that do not require auth: health and status check
-  if (req.path === '/health' || req.path === '/api/v1/health' || req.path === '/api/v1/ready') {
+  const isPublic =
+    req.path === '/health' ||
+    req.path === '/ready' ||
+    req.originalUrl === '/api/v1/health' ||
+    req.originalUrl === '/api/v1/ready';
+
+  if (isPublic) {
     next();
     return;
   }

@@ -19,6 +19,7 @@ import { ActivityStatus, ApprovalStatus, EventType, RiskLevel, HealthStatus } fr
 import { assertActivityTransition } from '../../src/domain/state-machine/activity-state-machine.ts';
 import { validateRelativeFilePath } from '../validation/path-validator.ts';
 import { requireRole } from '../middleware/auth.ts';
+import { CENTRAL_ACTION_POLICIES, ActionType } from '../policy/action-policy.ts';
 import { MemoryProjectRepository } from '../repositories/memory/project-repository.ts';
 import { MemoryActivityRepository } from '../repositories/memory/activity-repository.ts';
 import { MemoryEventRepository } from '../repositories/memory/event-repository.ts';
@@ -322,7 +323,7 @@ apiV1Router.get('/projects/:id', async (req: Request, res: Response, next: NextF
 });
 
 // POST /api/v1/projects
-apiV1Router.post('/projects', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/projects', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, description, repository } = req.body;
     if (!name || typeof name !== 'string' || !name.trim()) {
@@ -392,7 +393,7 @@ apiV1Router.get('/activities/:id', async (req: Request, res: Response, next: Nex
 });
 
 // POST /api/v1/activities
-apiV1Router.post('/activities', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/activities', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { projectId, title, description, model, provider } = req.body;
     if (!projectId || !title) {
@@ -451,7 +452,7 @@ apiV1Router.post('/activities', async (req: Request, res: Response, next: NextFu
 });
 
 // POST /api/v1/activities/:id/continue
-apiV1Router.post('/activities/:id/continue', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/activities/:id/continue', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const act = await activityRepo.findById(req.params.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
@@ -496,7 +497,7 @@ apiV1Router.post('/activities/:id/continue', async (req: Request, res: Response,
 });
 
 // POST /api/v1/activities/:id/pause
-apiV1Router.post('/activities/:id/pause', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/activities/:id/pause', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const act = await activityRepo.findById(req.params.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
@@ -525,7 +526,7 @@ apiV1Router.post('/activities/:id/pause', async (req: Request, res: Response, ne
 });
 
 // POST /api/v1/activities/:id/stop
-apiV1Router.post('/activities/:id/stop', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/activities/:id/stop', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const act = await activityRepo.findById(req.params.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
@@ -554,7 +555,7 @@ apiV1Router.post('/activities/:id/stop', async (req: Request, res: Response, nex
 });
 
 // POST /api/v1/activities/:id/retry
-apiV1Router.post('/activities/:id/retry', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/activities/:id/retry', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const act = await activityRepo.findById(req.params.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
@@ -583,7 +584,7 @@ apiV1Router.post('/activities/:id/retry', async (req: Request, res: Response, ne
 });
 
 // POST /api/v1/activities/:id/resume
-apiV1Router.post('/activities/:id/resume', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/activities/:id/resume', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const act = await activityRepo.findById(req.params.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
@@ -623,7 +624,7 @@ apiV1Router.post('/activities/:id/resume', async (req: Request, res: Response, n
 });
 
 // POST /api/v1/activities/:id/fork
-apiV1Router.post('/activities/:id/fork', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/activities/:id/fork', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const source = await activityRepo.findById(req.params.id);
     if (!source) return sendError(req, res, 'NOT_FOUND', 'Source activity not found', 404);
@@ -661,7 +662,7 @@ apiV1Router.post('/activities/:id/fork', async (req: Request, res: Response, nex
 });
 
 // POST /api/v1/activities/:id/rewind (Single canonical route, no duplicate)
-apiV1Router.post('/activities/:id/rewind', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/activities/:id/rewind', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { checkpointId } = req.body;
     if (!checkpointId) {
@@ -733,7 +734,7 @@ apiV1Router.get('/sessions/:id', async (req: Request, res: Response, next: NextF
 });
 
 // POST /api/v1/sessions/:id/prompt
-apiV1Router.post('/sessions/:id/prompt', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/sessions/:id/prompt', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const session = await sessionRepo.findById(req.params.id);
     if (!session) return sendError(req, res, 'NOT_FOUND', 'Session not found', 404);
@@ -814,18 +815,40 @@ apiV1Router.get('/approvals/:id', async (req: Request, res: Response, next: Next
 });
 
 // POST /api/v1/approvals
-apiV1Router.post('/approvals', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/approvals', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { activityId, projectId, riskLevel, actionType, title, description, commandOrDiff, parameters } = req.body;
-    if (!activityId || !title || !actionType) {
-      return sendError(req, res, 'MISSING_FIELDS', 'activityId, actionType, and title are required', 400);
+    const { activityId, projectId, actionType, title, description, commandOrDiff, parameters } = req.body;
+    if (!title || !actionType) {
+      return sendError(req, res, 'MISSING_FIELDS', 'actionType and title are required', 400);
     }
+
+    if (activityId) {
+      const act = await activityRepo.findById(activityId);
+      if (!act) {
+        return sendError(req, res, 'ACTIVITY_NOT_FOUND', `Activity ${activityId} does not exist`, 404);
+      }
+      if (projectId && act.projectId !== projectId) {
+        return sendError(req, res, 'CROSS_RESOURCE_MISMATCH', `Activity ${activityId} does not belong to project ${projectId}`, 400);
+      }
+    }
+
+    if (projectId) {
+      const proj = await projectRepo.findById(projectId);
+      if (!proj) {
+        return sendError(req, res, 'PROJECT_NOT_FOUND', `Project ${projectId} does not exist`, 404);
+      }
+    }
+
+    // Authoritative Server-side Risk Policy (client cannot lower required riskLevel)
+    const policy = CENTRAL_ACTION_POLICIES[actionType as ActionType];
+    const authoritativeRisk = policy ? policy.riskLevel : RiskLevel.STRONG_CONFIRM;
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     const created = await approvalRepo.create({
       id: `appr-${Date.now().toString(36)}`,
       activityId,
-      projectId: projectId || 'proj-01',
-      riskLevel: riskLevel || RiskLevel.CONFIRM,
+      projectId,
+      riskLevel: authoritativeRisk,
       actionType,
       title,
       description: description || '',
@@ -833,6 +856,7 @@ apiV1Router.post('/approvals', async (req: Request, res: Response, next: NextFun
       parameters: parameters || {},
       status: ApprovalStatus.PENDING,
       requestedAt: new Date().toISOString(),
+      expiresAt,
     });
 
     sendSuccess(req, res, created, 201);
@@ -842,11 +866,11 @@ apiV1Router.post('/approvals', async (req: Request, res: Response, next: NextFun
 });
 
 // POST /api/v1/approvals/:id/resolve
-apiV1Router.post('/approvals/:id/resolve', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/approvals/:id/resolve', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status } = req.body;
-    if (!status || !Object.values(ApprovalStatus).includes(status)) {
-      return sendError(req, res, 'INVALID_STATUS', 'Valid status (APPROVED / REJECTED) is required', 400);
+    if (!status || (status !== ApprovalStatus.APPROVED && status !== ApprovalStatus.REJECTED)) {
+      return sendError(req, res, 'INVALID_STATUS', 'Valid resolution status (APPROVED or REJECTED) is required', 400);
     }
 
     const existing = await approvalRepo.findById(req.params.id);
@@ -854,9 +878,17 @@ apiV1Router.post('/approvals/:id/resolve', async (req: Request, res: Response, n
       return sendError(req, res, 'APPROVAL_NOT_FOUND', 'Approval record does not exist', 404);
     }
 
-    const resolved = await approvalRepo.resolve(req.params.id, status, req.user?.id || 'phase1-demo-user');
+    if (existing.status !== ApprovalStatus.PENDING) {
+      return sendError(req, res, 'APPROVAL_ALREADY_RESOLVED', `Approval is already in status '${existing.status}' and cannot be resolved again.`, 409);
+    }
+
+    if (existing.expiresAt && new Date(existing.expiresAt) < new Date()) {
+      return sendError(req, res, 'APPROVAL_EXPIRED', 'Approval has expired and cannot be resolved', 400);
+    }
+
+    const resolved = await approvalRepo.resolve(req.params.id, status, req.user?.id || 'operator');
     if (!resolved) {
-      return sendError(req, res, 'NOT_FOUND', 'Approval not found for resolution', 404);
+      return sendError(req, res, 'NOT_FOUND', 'Approval could not be resolved', 404);
     }
 
     const evt = await eventRepo.append({
@@ -928,7 +960,7 @@ apiV1Router.get('/projects/:id/files/*', async (req: Request, res: Response, nex
 });
 
 // POST /api/v1/projects/:id/files
-apiV1Router.post('/projects/:id/files', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.post('/projects/:id/files', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const proj = await projectRepo.findById(req.params.id);
     if (!proj) return sendError(req, res, 'NOT_FOUND', `Project ${req.params.id} not found`, 404);
@@ -960,7 +992,7 @@ apiV1Router.post('/projects/:id/files', async (req: Request, res: Response, next
 });
 
 // PATCH /api/v1/projects/:id/files/*
-apiV1Router.patch('/projects/:id/files/*', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.patch('/projects/:id/files/*', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const proj = await projectRepo.findById(req.params.id);
     if (!proj) return sendError(req, res, 'NOT_FOUND', `Project ${req.params.id} not found`, 404);
@@ -990,7 +1022,7 @@ apiV1Router.patch('/projects/:id/files/*', async (req: Request, res: Response, n
 });
 
 // DELETE /api/v1/projects/:id/files/*
-apiV1Router.delete('/projects/:id/files/*', async (req: Request, res: Response, next: NextFunction) => {
+apiV1Router.delete('/projects/:id/files/*', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const proj = await projectRepo.findById(req.params.id);
     if (!proj) return sendError(req, res, 'NOT_FOUND', `Project ${req.params.id} not found`, 404);
@@ -1011,7 +1043,7 @@ apiV1Router.delete('/projects/:id/files/*', async (req: Request, res: Response, 
 // ==========================================
 
 // POST /api/v1/terminal/session
-apiV1Router.post('/terminal/session', (req: Request, res: Response) => {
+apiV1Router.post('/terminal/session', requireRole('OPERATOR'), (req: Request, res: Response) => {
   if (!isDemoMode) {
     return sendError(
       req,
@@ -1047,7 +1079,7 @@ apiV1Router.post('/terminal/session', (req: Request, res: Response) => {
 });
 
 // POST /api/v1/terminal/input
-apiV1Router.post('/terminal/input', (req: Request, res: Response) => {
+apiV1Router.post('/terminal/input', requireRole('OPERATOR'), (req: Request, res: Response) => {
   const { sessionId, input } = req.body;
   if (!sessionId) return sendError(req, res, 'MISSING_SESSION_ID', 'sessionId is required', 400);
 
@@ -1083,13 +1115,13 @@ apiV1Router.get('/terminal/:sessionId/output', (req: Request, res: Response) => 
 });
 
 // POST /api/v1/terminal/:sessionId/resize
-apiV1Router.post('/terminal/:sessionId/resize', (req: Request, res: Response) => {
+apiV1Router.post('/terminal/:sessionId/resize', requireRole('OPERATOR'), (req: Request, res: Response) => {
   const { cols, rows } = req.body;
   sendSuccess(req, res, { cols: cols || 80, rows: rows || 24 });
 });
 
 // POST /api/v1/terminal/:sessionId/close
-apiV1Router.post('/terminal/:sessionId/close', (req: Request, res: Response) => {
+apiV1Router.post('/terminal/:sessionId/close', requireRole('OPERATOR'), (req: Request, res: Response) => {
   terminalSessionsStore.delete(req.params.sessionId);
   sendSuccess(req, res, { closed: true });
 });
@@ -1103,7 +1135,7 @@ apiV1Router.get('/github/status', (req: Request, res: Response) => {
   sendSuccess(req, res, githubStatusStore);
 });
 
-apiV1Router.post('/github/sync', (req: Request, res: Response) => {
+apiV1Router.post('/github/sync', requireRole('OPERATOR'), (req: Request, res: Response) => {
   if (!isDemoMode) {
     return sendError(req, res, 'NOT_CONFIGURED', 'GitHub integration is not configured', 400);
   }
@@ -1115,7 +1147,7 @@ apiV1Router.get('/mcp', (req: Request, res: Response) => {
   sendSuccess(req, res, mcpServersStore);
 });
 
-apiV1Router.post('/mcp', (req: Request, res: Response) => {
+apiV1Router.post('/mcp', requireRole('OWNER'), (req: Request, res: Response) => {
   const { name, transport, command, description } = req.body;
   const newServer: McpServerItem = {
     schemaVersion: 1,
@@ -1136,7 +1168,7 @@ apiV1Router.post('/mcp', (req: Request, res: Response) => {
   sendSuccess(req, res, newServer, 201);
 });
 
-apiV1Router.post('/mcp/:id/toggle', (req: Request, res: Response) => {
+apiV1Router.post('/mcp/:id/toggle', requireRole('OPERATOR'), (req: Request, res: Response) => {
   const target = mcpServersStore.find((s) => s.id === req.params.id);
   if (!target) return sendError(req, res, 'NOT_FOUND', 'MCP server not found', 404);
 
@@ -1145,7 +1177,7 @@ apiV1Router.post('/mcp/:id/toggle', (req: Request, res: Response) => {
   sendSuccess(req, res, target);
 });
 
-apiV1Router.post('/mcp/:id/restart', (req: Request, res: Response) => {
+apiV1Router.post('/mcp/:id/restart', requireRole('OPERATOR'), (req: Request, res: Response) => {
   const target = mcpServersStore.find((s) => s.id === req.params.id);
   if (!target) return sendError(req, res, 'NOT_FOUND', 'MCP server not found', 404);
 
@@ -1165,7 +1197,7 @@ apiV1Router.get('/models/routing', (req: Request, res: Response) => {
   sendSuccess(req, res, routingPoliciesStore);
 });
 
-apiV1Router.patch('/models/routing/:id', (req: Request, res: Response) => {
+apiV1Router.patch('/models/routing/:id', requireRole('OPERATOR'), (req: Request, res: Response) => {
   const pol = routingPoliciesStore.find((p) => p.id === req.params.id);
   if (!pol) return sendError(req, res, 'NOT_FOUND', 'Routing policy not found', 404);
 
@@ -1184,7 +1216,7 @@ apiV1Router.get('/jobs', (req: Request, res: Response) => {
   sendSuccess(req, res, jobsStore);
 });
 
-apiV1Router.post('/jobs', (req: Request, res: Response) => {
+apiV1Router.post('/jobs', requireRole('OPERATOR'), (req: Request, res: Response) => {
   if (!isDemoMode) {
     return sendError(req, res, 'NOT_CONFIGURED', 'Execution host is not configured to run jobs', 400);
   }
@@ -1206,7 +1238,7 @@ apiV1Router.post('/jobs', (req: Request, res: Response) => {
   sendSuccess(req, res, newJob, 201);
 });
 
-apiV1Router.post('/jobs/:id/cancel', (req: Request, res: Response) => {
+apiV1Router.post('/jobs/:id/cancel', requireRole('OPERATOR'), (req: Request, res: Response) => {
   const job = jobsStore.find((j) => j.id === req.params.id);
   if (!job) {
     return sendError(req, res, 'NOT_FOUND', `Job ${req.params.id} not found`, 404);
@@ -1271,21 +1303,21 @@ apiV1Router.get('/backups', (req: Request, res: Response) => {
   sendSuccess(req, res, backupStatusStore);
 });
 
-apiV1Router.post('/backups', (req: Request, res: Response) => {
+apiV1Router.post('/backups', requireRole('OPERATOR'), (req: Request, res: Response) => {
   if (!isDemoMode) {
     return sendError(req, res, 'NOT_CONFIGURED', 'Backup system is not configured', 400);
   }
   sendSuccess(req, res, { jobId: `job-bk-${Date.now()}`, status: 'STARTED' });
 });
 
-apiV1Router.post('/backups/verify', (req: Request, res: Response) => {
+apiV1Router.post('/backups/verify', requireRole('OPERATOR'), (req: Request, res: Response) => {
   if (!isDemoMode) {
     return sendError(req, res, 'NOT_CONFIGURED', 'Backup system is not configured', 400);
   }
   sendSuccess(req, res, { verified: true, message: 'Phase 1 simulated backup verification passed.' });
 });
 
-apiV1Router.post('/backups/restore-test', (req: Request, res: Response) => {
+apiV1Router.post('/backups/restore-test', requireRole('OWNER'), (req: Request, res: Response) => {
   if (!isDemoMode) {
     return sendError(req, res, 'NOT_CONFIGURED', 'Backup system is not configured', 400);
   }

@@ -24,8 +24,10 @@ import {
   FolderGit2,
 } from 'lucide-react';
 
+import { formatCurrency } from '../../../utils/format.ts';
+
 export const HomeScreen: React.FC = () => {
-  const { services, refreshKey, setCurrentScreen, setSelectedActivityId, requestApproval } = useControlCenter();
+  const { services, refreshKey, setCurrentScreen, setSelectedActivityId, requestApproval, serviceMode } = useControlCenter();
   const [dashboard, setDashboard] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -242,9 +244,13 @@ export const HomeScreen: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-mono text-slate-300">
             <div className="flex items-center gap-2">
               <Server className="w-4 h-4 text-amber-400" />
-              <span className="font-semibold uppercase tracking-wider">Oracle Host Resources</span>
+              <span className="font-semibold uppercase tracking-wider">
+                {serviceMode === 'mock' ? 'Oracle Host Resources' : 'Workstation Host'}
+              </span>
             </div>
-            <span className="text-[11px] text-slate-400">ARM Ampere 4-Core</span>
+            <span className="text-[11px] text-slate-400">
+              {serviceMode === 'mock' ? 'ARM Ampere 4-Core' : (serverSummary.osName || 'NOT_CONFIGURED')}
+            </span>
           </div>
 
           <div className="space-y-2.5 text-xs font-mono">
@@ -253,12 +259,14 @@ export const HomeScreen: React.FC = () => {
                 <span className="flex items-center gap-1">
                   <Cpu className="w-3 h-3" /> CPU Load
                 </span>
-                <span className="text-slate-200 font-semibold">{serverSummary.cpuPercent}%</span>
+                <span className="text-slate-200 font-semibold">
+                  {serverSummary.cpuPercent !== null ? `${serverSummary.cpuPercent}%` : '—'}
+                </span>
               </div>
               <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-amber-400 transition-all"
-                  style={{ width: `${serverSummary.cpuPercent}%` }}
+                  style={{ width: `${serverSummary.cpuPercent ?? 0}%` }}
                 />
               </div>
             </div>
@@ -267,13 +275,15 @@ export const HomeScreen: React.FC = () => {
               <div className="flex justify-between text-[11px] text-slate-400 mb-1">
                 <span>RAM Usage</span>
                 <span className="text-slate-200 font-semibold">
-                  {serverSummary.memoryUsedGb} / {serverSummary.memoryTotalGb} GB ({serverSummary.memoryPercent}%)
+                  {serverSummary.memoryUsedGb !== null
+                    ? `${serverSummary.memoryUsedGb} / ${serverSummary.memoryTotalGb} GB (${serverSummary.memoryPercent}%)`
+                    : '—'}
                 </span>
               </div>
               <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-emerald-400 transition-all"
-                  style={{ width: `${serverSummary.memoryPercent}%` }}
+                  style={{ width: `${serverSummary.memoryPercent ?? 0}%` }}
                 />
               </div>
             </div>
@@ -281,16 +291,18 @@ export const HomeScreen: React.FC = () => {
             <div>
               <div className="flex justify-between text-[11px] text-slate-400 mb-1">
                 <span className="flex items-center gap-1">
-                  <HardDrive className="w-3 h-3" /> Disk NVMe
+                  <HardDrive className="w-3 h-3" /> Host Storage
                 </span>
                 <span className="text-slate-200 font-semibold">
-                  {serverSummary.diskUsedGb} / {serverSummary.diskTotalGb} GB ({serverSummary.diskPercent}%)
+                  {serverSummary.diskUsedGb !== null
+                    ? `${serverSummary.diskUsedGb} / ${serverSummary.diskTotalGb} GB (${serverSummary.diskPercent}%)`
+                    : '—'}
                 </span>
               </div>
               <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-cyan-400 transition-all"
-                  style={{ width: `${serverSummary.diskPercent}%` }}
+                  style={{ width: `${serverSummary.diskPercent ?? 0}%` }}
                 />
               </div>
             </div>
@@ -299,7 +311,7 @@ export const HomeScreen: React.FC = () => {
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3 text-slate-500" /> Uptime:
               </span>
-              <span className="text-slate-300 font-semibold">{serverSummary.uptimeFormatted}</span>
+              <span className="text-slate-300 font-semibold">{serverSummary.uptimeFormatted || '—'}</span>
             </div>
           </div>
         </div>
@@ -322,29 +334,33 @@ export const HomeScreen: React.FC = () => {
           <div className="grid grid-cols-2 gap-2 text-xs font-mono">
             <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block mb-0.5">Active Provider</span>
-              <span className="font-semibold text-slate-200">{aiSummary.currentProvider}</span>
+              <span className="font-semibold text-slate-200">{aiSummary.currentProvider || 'NOT_CONFIGURED'}</span>
             </div>
             <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block mb-0.5">Active Model</span>
               <span className="font-semibold text-amber-300 text-[11px] truncate block">
-                {aiSummary.currentModel}
+                {aiSummary.currentModel || 'NOT_CONFIGURED'}
               </span>
             </div>
             <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block mb-0.5">Today Requests</span>
-              <span className="font-semibold text-slate-100">{aiSummary.todayRequests} runs</span>
+              <span className="font-semibold text-slate-100">
+                {aiSummary.todayRequests !== null && aiSummary.todayRequests !== undefined
+                  ? `${aiSummary.todayRequests} runs`
+                  : '—'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block mb-0.5">Today Cost</span>
               <span className="font-semibold text-emerald-400">
-                ${(aiSummary.todayEstimatedCost ?? 0).toFixed(2)}
+                {formatCurrency(aiSummary.todayEstimatedCost)}
               </span>
             </div>
           </div>
 
           <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-400">
-            <span>Weekly: ${(aiSummary.weeklyCost ?? 0).toFixed(2)}</span>
-            <span>Monthly Run-rate: ${(aiSummary.monthlyCost ?? 0).toFixed(2)}</span>
+            <span>Weekly: {formatCurrency(aiSummary.weeklyCost)}</span>
+            <span>Monthly Run-rate: {formatCurrency(aiSummary.monthlyCost)}</span>
           </div>
         </div>
       </div>

@@ -20,6 +20,8 @@ import {
   FileCode,
 } from 'lucide-react';
 
+import { formatPercent, formatTokens, formatCurrency } from '../../../utils/format.ts';
+
 export const ClaudeScreen: React.FC = () => {
   const { services, selectedProjectId, setSelectedProjectId, triggerRefresh, refreshKey } = useControlCenter();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -166,7 +168,7 @@ export const ClaudeScreen: React.FC = () => {
     setStatusMessage(`Dispatched action [${action}] to session on server`);
     try {
       if (action === 'Pause') await services.activitiesApi.pauseActivity(selectedActivityId);
-      if (action === 'Resume') await services.activitiesApi.resumeActivity(selectedActivityId);
+      if (action === 'Resume' || action === 'Continue') await services.activitiesApi.resumeActivity(selectedActivityId);
       if (action === 'Stop') await services.activitiesApi.stopActivity(selectedActivityId);
       triggerRefresh();
     } catch (e: any) {
@@ -259,11 +261,14 @@ export const ClaudeScreen: React.FC = () => {
             >
               {modelProfiles
                 .filter((p) => p.provider === provider || !provider)
-                .map((m) => (
-                  <option key={m.id} value={m.model}>
-                    {m.model}
-                  </option>
-                ))}
+                .map((m) => {
+                  const val = m.modelId || m.model || m.id;
+                  return (
+                    <option key={m.id} value={val}>
+                      {m.displayName || val}
+                    </option>
+                  );
+                })}
               {modelProfiles.length === 0 && <option value="claude-sonnet-5-5">claude-sonnet-5-5</option>}
             </select>
           </div>
@@ -305,11 +310,11 @@ export const ClaudeScreen: React.FC = () => {
         {session && (
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800 text-[11px] text-slate-400">
             <div className="flex items-center gap-3">
-              <span>Context Usage: {session.contextUsagePercent ?? 0}%</span>
+              <span>Context Usage: {formatPercent(session.contextUsagePercent)}</span>
               <span>•</span>
-              <span>Tokens: {(session.tokensIn ?? 0).toLocaleString()} in / {(session.tokensOut ?? 0).toLocaleString()} out</span>
+              <span>Tokens: {formatTokens(session.tokensIn, session.tokensOut)}</span>
               <span>•</span>
-              <span className="text-emerald-400">Cost: ${(session.cost ?? 0).toFixed(3)}</span>
+              <span className="text-emerald-400">Cost: {formatCurrency(session.cost, 3)}</span>
             </div>
             <span className="text-slate-500 text-[10px]">Phase 1 Mock Execution</span>
           </div>

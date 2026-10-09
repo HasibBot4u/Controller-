@@ -92,7 +92,13 @@ async function startServer() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-if (process.env.NODE_ENV !== 'test') {
+const isTesting =
+  process.env.NODE_ENV === 'test' ||
+  Boolean(process.env.VITEST) ||
+  Boolean(process.env.TEST) ||
+  process.argv.some((arg) => arg.includes('vitest'));
+
+if (!isTesting) {
   startServer().catch((err) => {
     console.error('Fatal server boot error:', err);
     process.exit(1);

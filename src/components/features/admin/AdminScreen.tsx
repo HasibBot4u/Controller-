@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const AdminScreen: React.FC = () => {
-  const { services, requestApproval } = useControlCenter();
+  const { services, requestApproval, serviceMode } = useControlCenter();
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
 
   const handleReboot = async () => {
@@ -144,15 +144,20 @@ export const AdminScreen: React.FC = () => {
 
         {/* Infrastructure Topology */}
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
-          <div className="flex items-center gap-2 text-slate-200 font-semibold text-xs sm:text-sm">
-            <Layers className="w-4 h-4 text-indigo-400" />
-            <span>Cloud Infrastructure Stack</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-slate-200 font-semibold text-xs sm:text-sm">
+              <Layers className="w-4 h-4 text-indigo-400" />
+              <span>Cloud Infrastructure Stack</span>
+            </div>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400">
+              {serviceMode === 'mock' ? 'DEMO SIMULATION' : 'PLANNED / NOT_CONFIGURED'}
+            </span>
           </div>
           <div className="text-[11px] text-slate-400 space-y-1">
-            <div>Compute: Oracle Cloud Infrastructure Ampere A1 (ARM64)</div>
-            <div>Gateway: Cloudflare Zero Trust Tunnel</div>
-            <div>Proxy: LiteLLM v1.42 (Local IPC)</div>
-            <div>Backup Target: Oracle Object Storage (Ashburn)</div>
+            <div>Compute: {serviceMode === 'mock' ? 'Oracle Cloud Infrastructure Ampere A1 (ARM64) [DEMO]' : 'Workstation Execution Host [NOT_CONFIGURED]'}</div>
+            <div>Gateway: {serviceMode === 'mock' ? 'Cloudflare Zero Trust Tunnel [DEMO]' : 'Control Plane Gateway [NOT_CONFIGURED]'}</div>
+            <div>Proxy: {serviceMode === 'mock' ? 'LiteLLM v1.42 (Local IPC) [DEMO]' : 'LiteLLM Proxy Router [NOT_CONFIGURED]'}</div>
+            <div>Backup Target: {serviceMode === 'mock' ? 'Oracle Object Storage (Ashburn) [DEMO]' : 'Object Storage Target [NOT_CONFIGURED]'}</div>
           </div>
         </div>
       </div>

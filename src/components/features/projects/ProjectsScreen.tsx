@@ -16,6 +16,8 @@ import {
   X,
 } from 'lucide-react';
 
+import { formatCurrency } from '../../../utils/format.ts';
+
 export const ProjectsScreen: React.FC = () => {
   const { services, selectedProjectId, setSelectedProjectId, setSelectedActivityId, setCurrentScreen, refreshKey } =
     useControlCenter();
@@ -227,7 +229,14 @@ export const ProjectsScreen: React.FC = () => {
                 </div>
                 <div>Sandbox: Phase 1 Local Control Plane</div>
                 <div>
-                  Tokens: {projectSessions.filter((s) => s.projectId === selectedProject.id).reduce((sum, s) => sum + (s.tokensIn ?? 0) + (s.tokensOut ?? 0), 0).toLocaleString()}
+                  Tokens: {(() => {
+                    const matched = projectSessions.filter((s) => s.projectId === selectedProject.id);
+                    if (matched.length === 0) return '—';
+                    const hasAny = matched.some((s) => s.tokensIn !== null || s.tokensOut !== null);
+                    if (!hasAny) return '—';
+                    const total = matched.reduce((sum, s) => sum + (s.tokensIn || 0) + (s.tokensOut || 0), 0);
+                    return total.toLocaleString();
+                  })()}
                 </div>
               </div>
             </div>
@@ -269,7 +278,7 @@ export const ProjectsScreen: React.FC = () => {
                     <div>
                       <div className="font-semibold text-slate-200">{act.title}</div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
-                        {act.id} • {act.gitBranch} • ${(act.estimatedCost ?? 0).toFixed(2)}
+                        {act.id} • {act.gitBranch || 'main'} • {formatCurrency(act.estimatedCost)}
                       </div>
                     </div>
                     <ArrowRight className="w-3.5 h-3.5 text-slate-500" />

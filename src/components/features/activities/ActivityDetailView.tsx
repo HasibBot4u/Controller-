@@ -30,6 +30,8 @@ import {
   CloudCheck,
 } from 'lucide-react';
 
+import { formatCurrency } from '../../../utils/format.ts';
+
 interface ActivityDetailViewProps {
   activityId: string;
   onBack: () => void;
@@ -434,7 +436,7 @@ export const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ activity
                 <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
                   <span className="text-[10px] text-slate-400 block mb-0.5">Estimated Cost</span>
                   <span className="font-bold text-emerald-400 text-sm">
-                    ${(activity.estimatedCost ?? 0).toFixed(3)}
+                    {formatCurrency(activity.estimatedCost, 3)}
                   </span>
                 </div>
 

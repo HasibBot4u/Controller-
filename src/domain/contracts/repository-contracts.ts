@@ -35,6 +35,7 @@ export interface ApprovalRepository {
   findById(id: string): Promise<PendingApproval | null>;
   create(approval: Omit<PendingApproval, 'schemaVersion'>): Promise<PendingApproval>;
   resolve(id: string, status: ApprovalStatus, resolvedBy: string): Promise<PendingApproval | null>;
+  consume?(id: string): Promise<PendingApproval | null>;
 }
 
 export interface SessionRepository {

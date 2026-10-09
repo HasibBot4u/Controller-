@@ -7,17 +7,13 @@ import {
   Cpu,
   Power,
   RotateCcw,
-  Settings,
   Terminal,
   Plus,
   AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  HelpCircle,
 } from 'lucide-react';
 
 export const McpScreen: React.FC = () => {
-  const { services, requestApproval, triggerRefresh, refreshKey } = useControlCenter();
+  const { services, requestApproval, triggerRefresh, refreshKey, serviceMode } = useControlCenter();
   const [servers, setServers] = useState<McpServerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLogs, setSelectedLogs] = useState<{ name: string; logs: string } | null>(null);
@@ -54,7 +50,7 @@ export const McpScreen: React.FC = () => {
       riskLevel: RiskLevel.CONFIRM,
       actionType: 'MCP_SERVER_RESTART',
       title: `Restart MCP Server: ${s.name}`,
-      description: `Kill active process and reinitialize stdio/sse pipe transport on Oracle Linux host.`,
+      description: `Kill active process and reinitialize transport on workstation host.`,
       parameters: { serverId: s.id },
     });
 
@@ -67,9 +63,11 @@ export const McpScreen: React.FC = () => {
   const showLogs = (s: McpServerItem) => {
     setSelectedLogs({
       name: s.name,
-      logs: `[${new Date().toISOString()}] [INFO] [${s.name}] Transport: ${s.transport} connected.\n[${new Date().toISOString()}] [INFO] Registered ${s.toolsCount} tool schema definitions into Claude context.\n[${new Date().toISOString()}] [INFO] Stdio pipe healthcheck: ping latency 2.4ms.\n${s.lastError ? `[WARN] ${s.lastError}\n` : ''}`,
+      logs: `[${new Date().toISOString()}] [INFO] [${s.name}] Transport: ${s.transport} connected.\n[${new Date().toISOString()}] [INFO] Registered ${s.toolsCount} tool schema definitions into Claude context.\n${s.lastError ? `[WARN] ${s.lastError}\n` : ''}`,
     });
   };
+
+  const isDemo = serviceMode === 'mock';
 
   return (
     <div className="p-3.5 sm:p-6 space-y-4 max-w-5xl mx-auto pb-28 font-mono text-xs animate-in fade-in duration-150">
@@ -83,92 +81,115 @@ export const McpScreen: React.FC = () => {
             </span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Model Context Protocol daemon multiplexer running on Oracle VM
+            Model Context Protocol gateway. Modern remote transport: Streamable HTTP (legacy HTTP+SSE supported).
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            services.mcpApi.addServer({ name: 'custom-sqlite-mcp', transport: 'stdio' }).then(() => triggerRefresh());
-          }}
-          className="h-9 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer shadow-md shadow-amber-950"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Server</span>
-        </button>
-      </div>
-
-      <div className="space-y-2.5">
-        {servers.map((s) => (
-          <div
-            key={s.id}
-            className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/90 space-y-3"
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] px-2 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400">
+            {isDemo ? 'DEMO SIMULATION' : servers.length > 0 ? 'CONFIGURED' : 'NOT_CONFIGURED'}
+          </span>
+          <button
+            onClick={() => {
+              services.mcpApi.addServer({ name: 'custom-mcp-service', transport: 'streamable-http' }).then(() => triggerRefresh());
+            }}
+            className="h-9 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer shadow-md shadow-amber-950"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-200 text-sm">{s.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
-                    {s.transport.toUpperCase()}
-                  </span>
-                  <span className="text-[10px] text-slate-500">v{s.version}</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">{s.description}</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <HealthBadge status={s.status} />
-              </div>
-            </div>
-
-            {s.lastError && (
-              <div className="p-2 rounded bg-amber-950/40 border border-amber-800/40 text-[11px] text-amber-300 flex items-start gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span>{s.lastError}</span>
-              </div>
-            )}
-
-            {s.command && (
-              <div className="p-2 bg-black/40 border border-slate-800 rounded-lg text-[11px] text-slate-400 flex items-center gap-1.5 truncate">
-                <Terminal className="w-3 h-3 text-slate-500 flex-shrink-0" />
-                <span className="truncate">{s.command}</span>
-              </div>
-            )}
-
-            {/* Action Bar */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px]">
-              <span className="text-slate-400">{s.toolsCount} active tools</span>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => showLogs(s)}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
-                >
-                  Logs
-                </button>
-                <button
-                  onClick={() => handleRestart(s)}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 cursor-pointer"
-                >
-                  <RotateCcw className="w-3 h-3 text-amber-400" />
-                  Restart
-                </button>
-                <button
-                  onClick={() => handleToggle(s)}
-                  className={`px-2.5 py-1 rounded font-semibold flex items-center gap-1 cursor-pointer ${
-                    s.enabled
-                      ? 'bg-rose-950/60 border border-rose-800 text-rose-300 hover:bg-rose-900/60'
-                      : 'bg-emerald-950/60 border border-emerald-800 text-emerald-300 hover:bg-emerald-900/60'
-                  }`}
-                >
-                  <Power className="w-3 h-3" />
-                  {s.enabled ? 'Disable' : 'Enable'}
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+            <Plus className="w-4 h-4" />
+            <span>Add Server</span>
+          </button>
+        </div>
       </div>
+
+      {servers.length === 0 ? (
+        <div className="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center text-slate-500">
+          No MCP servers configured. Add a server using modern Streamable HTTP or local stdio.
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {servers.map((s) => (
+            <div
+              key={s.id}
+              className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/90 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-200 text-sm">{s.name}</span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${
+                        s.transport === 'streamable-http'
+                          ? 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
+                          : s.transport === 'sse'
+                          ? 'bg-amber-950/70 border-amber-800 text-amber-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-300'
+                      }`}
+                    >
+                      {s.transport === 'streamable-http'
+                        ? 'STREAMABLE HTTP (MODERN)'
+                        : s.transport === 'sse'
+                        ? 'SSE (LEGACY COMPAT)'
+                        : 'STDIO (LOCAL)'}
+                    </span>
+                    <span className="text-[10px] text-slate-500">v{s.version}</span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">{s.description}</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <HealthBadge status={s.status} />
+                </div>
+              </div>
+
+              {s.lastError && (
+                <div className="p-2 rounded bg-amber-950/40 border border-amber-800/40 text-[11px] text-amber-300 flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <span>{s.lastError}</span>
+                </div>
+              )}
+
+              {s.command && (
+                <div className="p-2 bg-black/40 border border-slate-800 rounded-lg text-[11px] text-slate-400 flex items-center gap-1.5 truncate">
+                  <Terminal className="w-3 h-3 text-slate-500 flex-shrink-0" />
+                  <span className="truncate">{s.command}</span>
+                </div>
+              )}
+
+              {/* Action Bar */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px]">
+                <span className="text-slate-400">{s.toolsCount} active tools</span>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => showLogs(s)}
+                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                  >
+                    Logs
+                  </button>
+                  <button
+                    onClick={() => handleRestart(s)}
+                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3 text-amber-400" />
+                    Restart
+                  </button>
+                  <button
+                    onClick={() => handleToggle(s)}
+                    className={`px-2.5 py-1 rounded font-semibold flex items-center gap-1 cursor-pointer ${
+                      s.enabled
+                        ? 'bg-rose-950/60 border border-rose-800 text-rose-300 hover:bg-rose-900/60'
+                        : 'bg-emerald-950/60 border border-emerald-800 text-emerald-300 hover:bg-emerald-900/60'
+                    }`}
+                  >
+                    <Power className="w-3 h-3" />
+                    {s.enabled ? 'Disable' : 'Enable'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Logs Modal */}
       {selectedLogs && (
@@ -178,7 +199,7 @@ export const McpScreen: React.FC = () => {
               <span className="font-semibold text-slate-200">
                 Daemon Logs: {selectedLogs.name}
               </span>
-              <button onClick={() => setSelectedLogs(null)} className="text-slate-400">
+              <button onClick={() => setSelectedLogs(null)} className="text-slate-400 cursor-pointer">
                 Close
               </button>
             </div>
