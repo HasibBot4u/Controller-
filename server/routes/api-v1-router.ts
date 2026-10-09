@@ -20,12 +20,27 @@ import { assertActivityTransition } from '../../src/domain/state-machine/activit
 import { validateRelativeFilePath } from '../validation/path-validator.ts';
 import { requireRole } from '../middleware/auth.ts';
 import { CENTRAL_ACTION_POLICIES, ActionType } from '../policy/action-policy.ts';
+import {
+  ProjectRepository,
+  ActivityRepository,
+  EventRepository,
+  CheckpointRepository,
+  ApprovalRepository,
+  SessionRepository,
+} from '../../src/domain/contracts/repository-contracts.ts';
 import { MemoryProjectRepository } from '../repositories/memory/project-repository.ts';
 import { MemoryActivityRepository } from '../repositories/memory/activity-repository.ts';
 import { MemoryEventRepository } from '../repositories/memory/event-repository.ts';
 import { MemoryCheckpointRepository } from '../repositories/memory/checkpoint-repository.ts';
 import { MemoryApprovalRepository } from '../repositories/memory/approval-repository.ts';
 import { MemorySessionRepository } from '../repositories/memory/session-repository.ts';
+import { FirestoreProjectRepository } from '../repositories/firestore/firestore-project-repository.ts';
+import { FirestoreActivityRepository } from '../repositories/firestore/firestore-activity-repository.ts';
+import { FirestoreEventRepository } from '../repositories/firestore/firestore-event-repository.ts';
+import { FirestoreCheckpointRepository } from '../repositories/firestore/firestore-checkpoint-repository.ts';
+import { FirestoreApprovalRepository } from '../repositories/firestore/firestore-approval-repository.ts';
+import { FirestoreSessionRepository } from '../repositories/firestore/firestore-session-repository.ts';
+import { checkFirestoreReadiness } from '../services/firebase-admin.ts';
 import {
   FileItem,
   BackgroundJob,
@@ -43,14 +58,27 @@ export const apiV1Router = Router();
 
 // Mode detection: Default is strictly FALSE (Empty / Unconfigured)
 const isDemoMode = process.env.PHASE1_DEMO_MODE === 'true';
+const useFirestore = process.env.USE_FIRESTORE === 'true';
 
-// Server-side repositories: Default start EMPTY unless PHASE1_DEMO_MODE is true
-const projectRepo = new MemoryProjectRepository(isDemoMode ? DEMO_PROJECTS : []);
-const activityRepo = new MemoryActivityRepository(isDemoMode ? DEMO_ACTIVITIES : []);
-const eventRepo = new MemoryEventRepository(isDemoMode ? DEMO_EVENTS : []);
-const checkpointRepo = new MemoryCheckpointRepository(isDemoMode ? DEMO_CHECKPOINTS : []);
-const approvalRepo = new MemoryApprovalRepository(isDemoMode ? DEMO_APPROVALS : []);
-const sessionRepo = new MemorySessionRepository(isDemoMode ? DEMO_SESSIONS : []);
+// Server-side repositories: Firestore if USE_FIRESTORE=true, otherwise memory adapter
+const projectRepo: ProjectRepository = useFirestore
+  ? new FirestoreProjectRepository()
+  : new MemoryProjectRepository(isDemoMode ? DEMO_PROJECTS : []);
+const activityRepo: ActivityRepository = useFirestore
+  ? new FirestoreActivityRepository()
+  : new MemoryActivityRepository(isDemoMode ? DEMO_ACTIVITIES : []);
+const eventRepo: EventRepository = useFirestore
+  ? new FirestoreEventRepository()
+  : new MemoryEventRepository(isDemoMode ? DEMO_EVENTS : []);
+const checkpointRepo: CheckpointRepository = useFirestore
+  ? new FirestoreCheckpointRepository()
+  : new MemoryCheckpointRepository(isDemoMode ? DEMO_CHECKPOINTS : []);
+const approvalRepo: ApprovalRepository = useFirestore
+  ? new FirestoreApprovalRepository()
+  : new MemoryApprovalRepository(isDemoMode ? DEMO_APPROVALS : []);
+const sessionRepo: SessionRepository = useFirestore
+  ? new FirestoreSessionRepository()
+  : new MemorySessionRepository(isDemoMode ? DEMO_SESSIONS : []);
 
 // Ephemeral server stores
 const filesStore = new Map<string, FileItem[]>();
@@ -134,7 +162,12 @@ function sendError(
 // ==========================================
 
 // GET /api/v1/health
-apiV1Router.get('/health', (req: Request, res: Response) => {
+apiV1Router.get('/health', async (req: Request, res: Response) => {
+  const firestoreCheck = await checkFirestoreReadiness();
+  const persistenceMode = useFirestore
+    ? (firestoreCheck.available ? 'FIRESTORE' : 'UNAVAILABLE')
+    : 'IN_MEMORY';
+
   const healthData: HealthStatusResponse = {
     controlPlane: {
       status: HealthStatus.HEALTHY,
@@ -148,7 +181,7 @@ apiV1Router.get('/health', (req: Request, res: Response) => {
         : 'Remote workstation execution layer is not configured',
     },
     dataMode: isDemoMode ? 'DEMO' : 'EMPTY',
-    persistence: 'IN_MEMORY',
+    persistence: persistenceMode as any,
     phase: 'PHASE_1',
     services: [
       {
@@ -158,6 +191,14 @@ apiV1Router.get('/health', (req: Request, res: Response) => {
         message: 'Responsive',
         lastChecked: 'now',
         origin: 'LIVE',
+      },
+      {
+        name: 'Firestore Persistence Store',
+        status: (firestoreCheck.status as unknown as HealthStatus) || HealthStatus.UNAVAILABLE,
+        latencyMs: firestoreCheck.latencyMs,
+        message: firestoreCheck.available ? 'Ready' : (firestoreCheck.error || 'Unavailable'),
+        lastChecked: firestoreCheck.checkedAt,
+        origin: firestoreCheck.available ? 'LIVE' : 'UNAVAILABLE',
       },
       {
         name: 'Remote Workstation Host',
@@ -216,8 +257,9 @@ apiV1Router.get('/health', (req: Request, res: Response) => {
 // GET /api/v1/dashboard
 apiV1Router.get('/dashboard', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const activities = await activityRepo.findAll();
-    const approvals = await approvalRepo.findPending();
+    const userId = req.user?.id;
+    const activities = await activityRepo.findAll(undefined, userId);
+    const approvals = await approvalRepo.findPending(undefined, userId);
 
     const running = activities.filter((a) => a.status === ActivityStatus.RUNNING).length;
     const waiting = activities.filter((a) => a.status === ActivityStatus.WAITING_APPROVAL).length;
@@ -302,7 +344,7 @@ apiV1Router.get('/dashboard', async (req: Request, res: Response, next: NextFunc
 // GET /api/v1/projects
 apiV1Router.get('/projects', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const list = await projectRepo.findAll();
+    const list = await projectRepo.findAll(req.user?.id);
     sendSuccess(req, res, list);
   } catch (err) {
     next(err);
@@ -312,7 +354,7 @@ apiV1Router.get('/projects', async (req: Request, res: Response, next: NextFunct
 // GET /api/v1/projects/:id
 apiV1Router.get('/projects/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const proj = await projectRepo.findById(req.params.id);
+    const proj = await projectRepo.findById(req.params.id, req.user?.id);
     if (!proj) {
       return sendError(req, res, 'PROJECT_NOT_FOUND', `Project ${req.params.id} does not exist`, 404);
     }
@@ -343,7 +385,8 @@ apiV1Router.post('/projects', requireRole('OPERATOR'), async (req: Request, res:
       activityCount: 0,
       filesCount: 1,
       isGitClean: true,
-    });
+      ownerId: req.user?.id,
+    }, req.user?.id);
 
     filesStore.set(id, [
       {
@@ -372,7 +415,7 @@ apiV1Router.post('/projects', requireRole('OPERATOR'), async (req: Request, res:
 apiV1Router.get('/activities', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const projectId = req.query.projectId as string | undefined;
-    const list = await activityRepo.findAll(projectId);
+    const list = await activityRepo.findAll(projectId, req.user?.id);
     sendSuccess(req, res, list);
   } catch (err) {
     next(err);
@@ -382,7 +425,7 @@ apiV1Router.get('/activities', async (req: Request, res: Response, next: NextFun
 // GET /api/v1/activities/:id
 apiV1Router.get('/activities/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const act = await activityRepo.findById(req.params.id);
+    const act = await activityRepo.findById(req.params.id, req.user?.id);
     if (!act) {
       return sendError(req, res, 'ACTIVITY_NOT_FOUND', `Activity ${req.params.id} does not exist`, 404);
     }
@@ -400,7 +443,7 @@ apiV1Router.post('/activities', requireRole('OPERATOR'), async (req: Request, re
       return sendError(req, res, 'MISSING_FIELDS', 'projectId and title are required', 400);
     }
 
-    const proj = await projectRepo.findById(projectId);
+    const proj = await projectRepo.findById(projectId, req.user?.id);
     if (!proj) {
       return sendError(req, res, 'PROJECT_NOT_FOUND', `Project ${projectId} does not exist`, 404);
     }
@@ -436,14 +479,21 @@ apiV1Router.post('/activities', requireRole('OPERATOR'), async (req: Request, re
       handoffAvailable: false,
       recoverable: false,
       approvalCount: 0,
-    });
+      ownerId: req.user?.id,
+    }, req.user?.id);
+
+    await projectRepo.update(projectId, {
+      activityCount: (proj.activityCount || 0) + 1,
+      updatedAt: now,
+    }, req.user?.id);
 
     await eventRepo.append({
       activityId: id,
       timestamp: now,
       type: EventType.ACTIVITY_CREATED,
       payload: { title, model: created.model, provider: created.provider },
-    });
+      ownerId: req.user?.id,
+    }, req.user?.id);
 
     sendSuccess(req, res, created, 201);
   } catch (err) {
@@ -454,7 +504,7 @@ apiV1Router.post('/activities', requireRole('OPERATOR'), async (req: Request, re
 // POST /api/v1/activities/:id/continue
 apiV1Router.post('/activities/:id/continue', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const act = await activityRepo.findById(req.params.id);
+    const act = await activityRepo.findById(req.params.id, req.user?.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
 
     if (!isDemoMode) {
@@ -479,15 +529,16 @@ apiV1Router.post('/activities/:id/continue', requireRole('OPERATOR'), async (req
       currentAction,
       nextAction: 'Evaluating changes in sandbox',
       blocker: null,
-    });
+    }, req.user?.id);
 
     const evt = await eventRepo.append({
       activityId: act.id,
       timestamp: new Date().toISOString(),
       type: EventType.ACTIVITY_RESUMED,
       payload: { instruction: prompt || 'User continued session' },
-    });
-    await activityRepo.update(act.id, { lastEventSequence: evt.sequence });
+      ownerId: req.user?.id,
+    }, req.user?.id);
+    await activityRepo.update(act.id, { lastEventSequence: evt.sequence }, req.user?.id);
     if (updated) updated.lastEventSequence = evt.sequence;
 
     sendSuccess(req, res, updated);
@@ -499,7 +550,7 @@ apiV1Router.post('/activities/:id/continue', requireRole('OPERATOR'), async (req
 // POST /api/v1/activities/:id/pause
 apiV1Router.post('/activities/:id/pause', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const act = await activityRepo.findById(req.params.id);
+    const act = await activityRepo.findById(req.params.id, req.user?.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
 
     assertActivityTransition(act.status, ActivityStatus.PAUSED);
@@ -508,15 +559,16 @@ apiV1Router.post('/activities/:id/pause', requireRole('OPERATOR'), async (req: R
       status: ActivityStatus.PAUSED,
       currentAction: 'Paused by operator',
       nextAction: 'Await resume signal',
-    });
+    }, req.user?.id);
 
     const evt = await eventRepo.append({
       activityId: act.id,
       timestamp: new Date().toISOString(),
       type: EventType.ACTIVITY_PAUSED,
       payload: { pausedBy: req.user?.id || 'operator' },
-    });
-    await activityRepo.update(act.id, { lastEventSequence: evt.sequence });
+      ownerId: req.user?.id,
+    }, req.user?.id);
+    await activityRepo.update(act.id, { lastEventSequence: evt.sequence }, req.user?.id);
     if (updated) updated.lastEventSequence = evt.sequence;
 
     sendSuccess(req, res, updated);
@@ -528,7 +580,7 @@ apiV1Router.post('/activities/:id/pause', requireRole('OPERATOR'), async (req: R
 // POST /api/v1/activities/:id/stop
 apiV1Router.post('/activities/:id/stop', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const act = await activityRepo.findById(req.params.id);
+    const act = await activityRepo.findById(req.params.id, req.user?.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
 
     assertActivityTransition(act.status, ActivityStatus.CANCELLED);
@@ -537,15 +589,16 @@ apiV1Router.post('/activities/:id/stop', requireRole('OPERATOR'), async (req: Re
       status: ActivityStatus.CANCELLED,
       currentAction: 'Cancelled by operator',
       nextAction: 'None',
-    });
+    }, req.user?.id);
 
     const evt = await eventRepo.append({
       activityId: act.id,
       timestamp: new Date().toISOString(),
       type: EventType.ACTIVITY_INTERRUPTED,
       payload: { reason: 'User requested cancellation' },
-    });
-    await activityRepo.update(act.id, { lastEventSequence: evt.sequence });
+      ownerId: req.user?.id,
+    }, req.user?.id);
+    await activityRepo.update(act.id, { lastEventSequence: evt.sequence }, req.user?.id);
     if (updated) updated.lastEventSequence = evt.sequence;
 
     sendSuccess(req, res, updated);
@@ -557,7 +610,7 @@ apiV1Router.post('/activities/:id/stop', requireRole('OPERATOR'), async (req: Re
 // POST /api/v1/activities/:id/retry
 apiV1Router.post('/activities/:id/retry', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const act = await activityRepo.findById(req.params.id);
+    const act = await activityRepo.findById(req.params.id, req.user?.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
 
     assertActivityTransition(act.status, ActivityStatus.QUEUED);
@@ -566,15 +619,16 @@ apiV1Router.post('/activities/:id/retry', requireRole('OPERATOR'), async (req: R
       status: ActivityStatus.QUEUED,
       currentAction: 'Re-queued for execution',
       blocker: isDemoMode ? null : 'EXECUTION_BACKEND_NOT_CONFIGURED',
-    });
+    }, req.user?.id);
 
     const evt = await eventRepo.append({
       activityId: act.id,
       timestamp: new Date().toISOString(),
       type: EventType.ACTIVITY_RESUMED,
       payload: { retry: true },
-    });
-    await activityRepo.update(act.id, { lastEventSequence: evt.sequence });
+      ownerId: req.user?.id,
+    }, req.user?.id);
+    await activityRepo.update(act.id, { lastEventSequence: evt.sequence }, req.user?.id);
     if (updated) updated.lastEventSequence = evt.sequence;
 
     sendSuccess(req, res, updated);
@@ -586,7 +640,7 @@ apiV1Router.post('/activities/:id/retry', requireRole('OPERATOR'), async (req: R
 // POST /api/v1/activities/:id/resume
 apiV1Router.post('/activities/:id/resume', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const act = await activityRepo.findById(req.params.id);
+    const act = await activityRepo.findById(req.params.id, req.user?.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
 
     if (!isDemoMode) {
@@ -606,15 +660,16 @@ apiV1Router.post('/activities/:id/resume', requireRole('OPERATOR'), async (req: 
       currentAction: 'Resumed by operator',
       nextAction: 'Evaluating sandbox state',
       recoverable: false,
-    });
+    }, req.user?.id);
 
     const evt = await eventRepo.append({
       activityId: act.id,
       timestamp: new Date().toISOString(),
       type: EventType.ACTIVITY_RECOVERED,
       payload: { message: 'Activity recovered from checkpoint' },
-    });
-    await activityRepo.update(act.id, { lastEventSequence: evt.sequence });
+      ownerId: req.user?.id,
+    }, req.user?.id);
+    await activityRepo.update(act.id, { lastEventSequence: evt.sequence }, req.user?.id);
     if (updated) updated.lastEventSequence = evt.sequence;
 
     sendSuccess(req, res, updated);
@@ -626,7 +681,7 @@ apiV1Router.post('/activities/:id/resume', requireRole('OPERATOR'), async (req: 
 // POST /api/v1/activities/:id/fork
 apiV1Router.post('/activities/:id/fork', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const source = await activityRepo.findById(req.params.id);
+    const source = await activityRepo.findById(req.params.id, req.user?.id);
     if (!source) return sendError(req, res, 'NOT_FOUND', 'Source activity not found', 404);
 
     const newId = `act-${Date.now().toString(36)}`;
@@ -646,14 +701,16 @@ apiV1Router.post('/activities/:id/fork', requireRole('OPERATOR'), async (req: Re
       blocker: isDemoMode ? null : 'EXECUTION_BACKEND_NOT_CONFIGURED',
       claudeSessionId: null,
       checkpointId: null,
-    });
+      ownerId: req.user?.id,
+    }, req.user?.id);
 
     await eventRepo.append({
       activityId: newId,
       timestamp: now,
       type: EventType.SESSION_STARTED,
       payload: { forkedFrom: source.id },
-    });
+      ownerId: req.user?.id,
+    }, req.user?.id);
 
     sendSuccess(req, res, forked, 201);
   } catch (err) {
@@ -669,10 +726,10 @@ apiV1Router.post('/activities/:id/rewind', requireRole('OPERATOR'), async (req: 
       return sendError(req, res, 'MISSING_CHECKPOINT_ID', 'checkpointId is required', 400);
     }
 
-    const act = await activityRepo.findById(req.params.id);
+    const act = await activityRepo.findById(req.params.id, req.user?.id);
     if (!act) return sendError(req, res, 'NOT_FOUND', 'Activity not found', 404);
 
-    const chk = await checkpointRepo.findById(checkpointId);
+    const chk = await checkpointRepo.findById(checkpointId, req.user?.id);
     if (!chk) return sendError(req, res, 'CHECKPOINT_NOT_FOUND', `Checkpoint ${checkpointId} not found`, 404);
 
     if (chk.activityId !== act.id) {
@@ -691,15 +748,16 @@ apiV1Router.post('/activities/:id/rewind', requireRole('OPERATOR'), async (req: 
       lastKnownState: `Rewound to checkpoint ${checkpointId} (${chk.description})`,
       currentAction: `Restored workspace to checkpoint snapshot ${checkpointId}`,
       nextAction: 'Review restored files and resume',
-    });
+    }, req.user?.id);
 
     const evt = await eventRepo.append({
       activityId: act.id,
       timestamp: new Date().toISOString(),
       type: EventType.ACTIVITY_REWOUND,
       payload: { rewindToCheckpoint: checkpointId, description: chk.description },
-    });
-    await activityRepo.update(act.id, { lastEventSequence: evt.sequence });
+      ownerId: req.user?.id,
+    }, req.user?.id);
+    await activityRepo.update(act.id, { lastEventSequence: evt.sequence }, req.user?.id);
     if (updated) updated.lastEventSequence = evt.sequence;
 
     sendSuccess(req, res, updated);
@@ -715,7 +773,7 @@ apiV1Router.post('/activities/:id/rewind', requireRole('OPERATOR'), async (req: 
 // GET /api/v1/sessions
 apiV1Router.get('/sessions', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const sessions = await sessionRepo.findAll();
+    const sessions = await sessionRepo.findAll(req.user?.id);
     sendSuccess(req, res, sessions);
   } catch (err) {
     next(err);
@@ -725,7 +783,7 @@ apiV1Router.get('/sessions', async (req: Request, res: Response, next: NextFunct
 // GET /api/v1/sessions/:id
 apiV1Router.get('/sessions/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const session = await sessionRepo.findById(req.params.id);
+    const session = await sessionRepo.findById(req.params.id, req.user?.id);
     if (!session) return sendError(req, res, 'NOT_FOUND', 'Session not found', 404);
     sendSuccess(req, res, session);
   } catch (err) {
@@ -736,7 +794,7 @@ apiV1Router.get('/sessions/:id', async (req: Request, res: Response, next: NextF
 // POST /api/v1/sessions/:id/prompt
 apiV1Router.post('/sessions/:id/prompt', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const session = await sessionRepo.findById(req.params.id);
+    const session = await sessionRepo.findById(req.params.id, req.user?.id);
     if (!session) return sendError(req, res, 'NOT_FOUND', 'Session not found', 404);
 
     if (!isDemoMode) {
@@ -757,7 +815,8 @@ apiV1Router.post('/sessions/:id/prompt', requireRole('OPERATOR'), async (req: Re
       timestamp: new Date().toISOString(),
       type: EventType.PROMPT_RECEIVED,
       payload: { prompt, planMode: Boolean(planMode) },
-    });
+      ownerId: req.user?.id,
+    }, req.user?.id);
 
     sendSuccess(req, res, { ack: true, promptEventId: promptEvt.id }, 202);
   } catch (err) {
@@ -768,9 +827,14 @@ apiV1Router.post('/sessions/:id/prompt', requireRole('OPERATOR'), async (req: Re
 // GET /api/v1/activities/:id/events
 apiV1Router.get('/activities/:id/events', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const act = await activityRepo.findById(req.params.id, req.user?.id);
+    if (!act) {
+      return sendError(req, res, 'ACTIVITY_NOT_FOUND', `Activity ${req.params.id} does not exist`, 404);
+    }
+
     const queryVal = (req.query.sinceSequence || req.query.since) as string;
     const sinceSeq = parseInt(queryVal, 10) || 0;
-    const all = await eventRepo.findByActivityId(req.params.id);
+    const all = await eventRepo.findByActivityId(req.params.id, req.user?.id);
     const filtered = all.filter((e) => e.sequence > sinceSeq).sort((a, b) => a.sequence - b.sequence);
     sendSuccess(req, res, filtered);
   } catch (err) {
@@ -781,7 +845,12 @@ apiV1Router.get('/activities/:id/events', async (req: Request, res: Response, ne
 // GET /api/v1/activities/:id/checkpoints
 apiV1Router.get('/activities/:id/checkpoints', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const checkpoints = await checkpointRepo.findByActivityId(req.params.id);
+    const act = await activityRepo.findById(req.params.id, req.user?.id);
+    if (!act) {
+      return sendError(req, res, 'ACTIVITY_NOT_FOUND', `Activity ${req.params.id} does not exist`, 404);
+    }
+
+    const checkpoints = await checkpointRepo.findByActivityId(req.params.id, req.user?.id);
     sendSuccess(req, res, checkpoints);
   } catch (err) {
     next(err);
@@ -796,7 +865,7 @@ apiV1Router.get('/activities/:id/checkpoints', async (req: Request, res: Respons
 apiV1Router.get('/approvals', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const activityId = req.query.activityId as string | undefined;
-    const list = await approvalRepo.findPending(activityId);
+    const list = await approvalRepo.findPending(activityId, req.user?.id);
     sendSuccess(req, res, list);
   } catch (err) {
     next(err);
@@ -806,7 +875,7 @@ apiV1Router.get('/approvals', async (req: Request, res: Response, next: NextFunc
 // GET /api/v1/approvals/:id
 apiV1Router.get('/approvals/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const found = await approvalRepo.findById(req.params.id);
+    const found = await approvalRepo.findById(req.params.id, req.user?.id);
     if (!found) return sendError(req, res, 'NOT_FOUND', 'Approval not found', 404);
     sendSuccess(req, res, found);
   } catch (err) {
@@ -823,7 +892,7 @@ apiV1Router.post('/approvals', requireRole('OPERATOR'), async (req: Request, res
     }
 
     if (activityId) {
-      const act = await activityRepo.findById(activityId);
+      const act = await activityRepo.findById(activityId, req.user?.id);
       if (!act) {
         return sendError(req, res, 'ACTIVITY_NOT_FOUND', `Activity ${activityId} does not exist`, 404);
       }
@@ -833,7 +902,7 @@ apiV1Router.post('/approvals', requireRole('OPERATOR'), async (req: Request, res
     }
 
     if (projectId) {
-      const proj = await projectRepo.findById(projectId);
+      const proj = await projectRepo.findById(projectId, req.user?.id);
       if (!proj) {
         return sendError(req, res, 'PROJECT_NOT_FOUND', `Project ${projectId} does not exist`, 404);
       }
@@ -857,7 +926,8 @@ apiV1Router.post('/approvals', requireRole('OPERATOR'), async (req: Request, res
       status: ApprovalStatus.PENDING,
       requestedAt: new Date().toISOString(),
       expiresAt,
-    });
+      ownerId: req.user?.id,
+    }, req.user?.id);
 
     sendSuccess(req, res, created, 201);
   } catch (err) {
@@ -873,7 +943,7 @@ apiV1Router.post('/approvals/:id/resolve', requireRole('OPERATOR'), async (req: 
       return sendError(req, res, 'INVALID_STATUS', 'Valid resolution status (APPROVED or REJECTED) is required', 400);
     }
 
-    const existing = await approvalRepo.findById(req.params.id);
+    const existing = await approvalRepo.findById(req.params.id, req.user?.id);
     if (!existing) {
       return sendError(req, res, 'APPROVAL_NOT_FOUND', 'Approval record does not exist', 404);
     }
@@ -886,7 +956,7 @@ apiV1Router.post('/approvals/:id/resolve', requireRole('OPERATOR'), async (req: 
       return sendError(req, res, 'APPROVAL_EXPIRED', 'Approval has expired and cannot be resolved', 400);
     }
 
-    const resolved = await approvalRepo.resolve(req.params.id, status, req.user?.id || 'operator');
+    const resolved = await approvalRepo.resolve(req.params.id, status, req.user?.id || 'operator', req.user?.id);
     if (!resolved) {
       return sendError(req, res, 'NOT_FOUND', 'Approval could not be resolved', 404);
     }
@@ -896,9 +966,10 @@ apiV1Router.post('/approvals/:id/resolve', requireRole('OPERATOR'), async (req: 
       timestamp: new Date().toISOString(),
       type: EventType.APPROVAL_RESOLVED,
       payload: { approvalId: resolved.id, status, actionType: resolved.actionType },
-    });
+      ownerId: req.user?.id,
+    }, req.user?.id);
 
-    const act = resolved.activityId ? await activityRepo.findById(resolved.activityId) : null;
+    const act = resolved.activityId ? await activityRepo.findById(resolved.activityId, req.user?.id) : null;
     if (act) {
       if (status === ApprovalStatus.APPROVED && act.status === ActivityStatus.WAITING_APPROVAL) {
         await activityRepo.update(act.id, {
@@ -906,12 +977,12 @@ apiV1Router.post('/approvals/:id/resolve', requireRole('OPERATOR'), async (req: 
           currentAction: `Executing authorized action: ${resolved.actionType}`,
           blocker: null,
           lastEventSequence: evt.sequence,
-        });
+        }, req.user?.id);
       } else if (status === ApprovalStatus.REJECTED) {
         await activityRepo.update(act.id, {
           currentAction: `Action aborted: ${resolved.actionType} was rejected`,
           lastEventSequence: evt.sequence,
-        });
+        }, req.user?.id);
       }
     }
 
@@ -928,7 +999,7 @@ apiV1Router.post('/approvals/:id/resolve', requireRole('OPERATOR'), async (req: 
 // GET /api/v1/projects/:id/files
 apiV1Router.get('/projects/:id/files', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const proj = await projectRepo.findById(req.params.id);
+    const proj = await projectRepo.findById(req.params.id, req.user?.id);
     if (!proj) return sendError(req, res, 'NOT_FOUND', `Project ${req.params.id} not found`, 404);
 
     const files = filesStore.get(req.params.id) || [];
@@ -941,7 +1012,7 @@ apiV1Router.get('/projects/:id/files', async (req: Request, res: Response, next:
 // GET /api/v1/projects/:id/files/*
 apiV1Router.get('/projects/:id/files/*', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const proj = await projectRepo.findById(req.params.id);
+    const proj = await projectRepo.findById(req.params.id, req.user?.id);
     if (!proj) return sendError(req, res, 'NOT_FOUND', `Project ${req.params.id} not found`, 404);
 
     const rawPath = req.params[0];
@@ -962,7 +1033,7 @@ apiV1Router.get('/projects/:id/files/*', async (req: Request, res: Response, nex
 // POST /api/v1/projects/:id/files
 apiV1Router.post('/projects/:id/files', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const proj = await projectRepo.findById(req.params.id);
+    const proj = await projectRepo.findById(req.params.id, req.user?.id);
     if (!proj) return sendError(req, res, 'NOT_FOUND', `Project ${req.params.id} not found`, 404);
 
     const { path: rawPath, isDirectory } = req.body;
@@ -994,7 +1065,7 @@ apiV1Router.post('/projects/:id/files', requireRole('OPERATOR'), async (req: Req
 // PATCH /api/v1/projects/:id/files/*
 apiV1Router.patch('/projects/:id/files/*', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const proj = await projectRepo.findById(req.params.id);
+    const proj = await projectRepo.findById(req.params.id, req.user?.id);
     if (!proj) return sendError(req, res, 'NOT_FOUND', `Project ${req.params.id} not found`, 404);
 
     const safePath = validateRelativeFilePath(req.params[0]);
@@ -1024,7 +1095,7 @@ apiV1Router.patch('/projects/:id/files/*', requireRole('OPERATOR'), async (req: 
 // DELETE /api/v1/projects/:id/files/*
 apiV1Router.delete('/projects/:id/files/*', requireRole('OPERATOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const proj = await projectRepo.findById(req.params.id);
+    const proj = await projectRepo.findById(req.params.id, req.user?.id);
     if (!proj) return sendError(req, res, 'NOT_FOUND', `Project ${req.params.id} not found`, 404);
 
     const safePath = validateRelativeFilePath(req.params[0]);

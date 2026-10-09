@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useControlCenter } from '../../../context/ControlCenterContext.tsx';
 import { useFirebaseAuth } from '../../../context/FirebaseAuthContext.tsx';
 import firebaseConfig from '../../../../firebase-applet-config.json';
+import { testFirestoreConnectionDetailed, FirestorePingDetail } from '../../../services/firebase.ts';
+import { requestJson } from '../../../adapters/http/http-client.ts';
+import { HealthStatusResponse } from '../../../domain/models/index.ts';
 import {
   Settings,
   Sun,
@@ -21,6 +24,8 @@ import {
   Flame,
   Activity,
   AlertCircle,
+  Clock,
+  Server,
 } from 'lucide-react';
 
 export const SettingsScreen: React.FC = () => {
@@ -44,20 +49,48 @@ export const SettingsScreen: React.FC = () => {
   } = useFirebaseAuth();
 
   const [testingPing, setTestingPing] = useState(false);
-  const [pingResult, setPingResult] = useState<string | null>(null);
+  const [pingDetail, setPingDetail] = useState<FirestorePingDetail | null>(null);
+  const [serverHealth, setServerHealth] = useState<HealthStatusResponse | null>(null);
+  const [loadingHealth, setLoadingHealth] = useState(false);
+
+  const fetchServerHealth = async () => {
+    setLoadingHealth(true);
+    try {
+      const res = await requestJson<HealthStatusResponse>('/health');
+      if (res.success && res.data) {
+        setServerHealth(res.data);
+      }
+    } catch (_err) {
+      // Server health unavailable
+    } finally {
+      setLoadingHealth(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchServerHealth();
+  }, []);
 
   const handleTestPing = async () => {
     setTestingPing(true);
-    setPingResult(null);
     try {
-      const ok = await checkConnection();
-      setPingResult(ok ? 'SUCCESS: Connected to Firestore' : 'REACHABLE: Firestore ready');
+      const detail = await testFirestoreConnectionDetailed();
+      setPingDetail(detail);
+      await checkConnection();
+      await fetchServerHealth();
     } catch (err: any) {
-      setPingResult(`ERROR: ${err?.message || 'Connection failed'}`);
+      setPingDetail({
+        ok: false,
+        latencyMs: 0,
+        timestamp: new Date().toISOString(),
+        error: err?.message || 'Connection test failed',
+      });
     } finally {
       setTestingPing(false);
     }
   };
+
+  const firestoreService = serverHealth?.services?.find((s) => s.name === 'Firestore Persistence Store');
 
   return (
     <div className="p-3.5 sm:p-6 space-y-4 max-w-4xl mx-auto pb-28 font-mono text-xs animate-in fade-in duration-150">
@@ -71,18 +104,23 @@ export const SettingsScreen: React.FC = () => {
         </p>
       </div>
 
-      {/* Firebase Cloud Identity & Database */}
+      {/* Firebase Cloud Identity & Persistence Readiness */}
       <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-slate-100 font-semibold text-xs sm:text-sm">
             <Flame className="w-4 h-4 text-amber-500" />
             <span>Firebase & Cloud Identity</span>
           </div>
-          <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-400 font-mono">
-            CONFIGURED
+          <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
+            currentUser
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+          }`}>
+            {currentUser ? 'AUTHENTICATED' : authLoading ? 'CHECKING AUTH...' : 'UNAUTHENTICATED'}
           </span>
         </div>
 
+        {/* Fact 1: Client & Project Configuration */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-300">
           <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
             <div className="text-slate-500 text-[10px]">Project ID</div>
@@ -94,7 +132,7 @@ export const SettingsScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* User Auth Section */}
+        {/* Fact 2: Authentication Readiness */}
         <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {currentUser ? (
             <div className="flex items-center gap-3">
@@ -157,15 +195,52 @@ export const SettingsScreen: React.FC = () => {
           </div>
         </div>
 
-        {pingResult && (
-          <div className={`p-2 rounded text-[11px] font-mono ${
-            pingResult.startsWith('SUCCESS') || pingResult.startsWith('REACHABLE')
-              ? 'bg-emerald-950/40 border border-emerald-800 text-emerald-300'
-              : 'bg-rose-950/40 border border-rose-800 text-rose-300'
+        {/* Fact 3: Firestore Client Reachability Result */}
+        {pingDetail && (
+          <div className={`p-3 rounded-lg border text-[11px] font-mono space-y-1 ${
+            pingDetail.ok
+              ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
+              : 'bg-rose-950/40 border-rose-800 text-rose-300'
           }`}>
-            {pingResult}
+            <div className="flex items-center justify-between font-semibold">
+              <span>{pingDetail.ok ? 'SUCCESS: Firestore Reachable' : 'FAILED: Firestore Unreachable'}</span>
+              <span>{pingDetail.latencyMs}ms</span>
+            </div>
+            {pingDetail.error && (
+              <div className="text-[10px] text-rose-400 break-words">{pingDetail.error}</div>
+            )}
+            <div className="text-[9px] text-slate-500">Tested: {pingDetail.timestamp}</div>
           </div>
         )}
+
+        {/* Fact 4: Durable Repository Readiness (Backend Authority) */}
+        <div className="p-3 rounded-lg bg-slate-950/40 border border-slate-800 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-slate-300 font-semibold text-xs">
+              <Server className="w-3.5 h-3.5 text-sky-400" />
+              <span>Server-Authoritative Persistence Model</span>
+            </div>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
+              serverHealth?.persistence === 'FIRESTORE'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+            }`}>
+              {serverHealth ? serverHealth.persistence : loadingHealth ? 'CHECKING...' : 'UNKNOWN'}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            {serverHealth?.persistence === 'FIRESTORE'
+              ? 'Authoritative server repository is connected to Firestore. Operations persist durably across restarts.'
+              : 'Authoritative server repository is in isolated Memory adapter. Remote execution and storage remain decoupled.'}
+          </p>
+          {firestoreService && (
+            <div className="text-[10px] text-slate-500 flex items-center gap-2 pt-1 border-t border-slate-800/60">
+              <span>Backend status: {firestoreService.status}</span>
+              <span>•</span>
+              <span>Message: {firestoreService.message}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Thin-Client Architectural Principle Card */}

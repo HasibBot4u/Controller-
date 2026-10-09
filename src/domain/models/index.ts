@@ -32,6 +32,7 @@ export interface Activity extends BaseEntity {
   handoffAvailable: boolean;
   recoverable: boolean;
   approvalCount: number;
+  ownerId?: string;
 }
 
 export interface Project extends BaseEntity {
@@ -46,6 +47,7 @@ export interface Project extends BaseEntity {
   activityCount: number;
   filesCount: number;
   isGitClean: boolean;
+  ownerId?: string;
 }
 
 export interface ActivityEvent extends BaseEntity {
@@ -55,6 +57,7 @@ export interface ActivityEvent extends BaseEntity {
   timestamp: string;
   type: EventType;
   payload: Record<string, unknown>;
+  ownerId?: string;
 }
 
 export interface Checkpoint extends BaseEntity {
@@ -67,6 +70,7 @@ export interface Checkpoint extends BaseEntity {
   filesSnapshotCount: number;
   trigger: 'AUTO_STEP' | 'MANUAL_SAVE' | 'PRE_APPROVAL' | 'RECOVERY_POINT';
   sizeBytes: number;
+  ownerId?: string;
 }
 
 export interface PendingApproval extends BaseEntity {
@@ -89,6 +93,8 @@ export interface PendingApproval extends BaseEntity {
   resolvedAt?: string;
   resolvedBy?: string;
   consumedAt?: string;
+  consumedBy?: string;
+  ownerId?: string;
 }
 
 export interface ClaudeSession extends BaseEntity {
@@ -105,6 +111,7 @@ export interface ClaudeSession extends BaseEntity {
   planMode: boolean;
   approvalMode: 'STRICT' | 'STANDARD' | 'PERMISSIVE';
   contextUsagePercent: number | null;
+  ownerId?: string;
 }
 
 export interface SystemServiceStatus {
@@ -312,7 +319,7 @@ export interface HealthStatusResponse {
     message?: string;
   };
   dataMode: 'EMPTY' | 'DEMO';
-  persistence: 'IN_MEMORY';
+  persistence: 'IN_MEMORY' | 'FIRESTORE' | 'UNAVAILABLE';
   phase: 'PHASE_1';
   services: SystemServiceStatus[];
 }

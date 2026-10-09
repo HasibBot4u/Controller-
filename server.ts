@@ -8,8 +8,15 @@ import { apiV1Router } from './server/routes/api-v1-router.ts';
 import { securityHeadersMiddleware } from './server/middleware/security-headers.ts';
 import { authenticateRequest } from './server/middleware/auth.ts';
 import { notFoundHandler, errorHandler } from './server/middleware/error-handler.ts';
+import { rateLimiter } from './server/middleware/rate-limiter.ts';
 
 dotenv.config();
+
+// Startup validation: reject incompatible production / demo configuration
+if (process.env.NODE_ENV === 'production' && process.env.PHASE1_DEMO_MODE === 'true') {
+  console.error('[FATAL] Incompatible configuration: PHASE1_DEMO_MODE=true cannot be enabled in production.');
+  process.exit(1);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,13 +24,13 @@ const __dirname = path.dirname(__filename);
 export function createApp(): Express {
   const app = express();
 
-  // Basic security headers & cache control (Item 24 & 25)
+  // Basic security headers, CSP, and CORS policy
   app.use(securityHeadersMiddleware);
 
-  // JSON body parsing with clean error handling
-  app.use(express.json());
+  // JSON body parsing with explicit 500kb limit (rejects payload-bloat attacks)
+  app.use(express.json({ limit: '500kb' }));
 
-  // Deterministic Request ID via crypto.randomUUID() (Item 22)
+  // Deterministic Request ID via crypto.randomUUID()
   app.use((req, res, next) => {
     const requestId = crypto.randomUUID();
     req.requestId = requestId;
@@ -37,6 +44,17 @@ export function createApp(): Express {
       }
     });
 
+    next();
+  });
+
+  // Global rate limiter for API calls (300 req/min)
+  app.use('/api/v1', rateLimiter({ windowMs: 60000, max: 300, keyPrefix: 'api-global' }));
+
+  // Stricter rate limiter for sensitive mutation endpoints (60 req/min)
+  app.use('/api/v1', (req, res, next) => {
+    if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
+      return rateLimiter({ windowMs: 60000, max: 60, keyPrefix: 'api-mutations' })(req, res, next);
+    }
     next();
   });
 
@@ -96,7 +114,8 @@ const isTesting =
   process.env.NODE_ENV === 'test' ||
   Boolean(process.env.VITEST) ||
   Boolean(process.env.TEST) ||
-  process.argv.some((arg) => arg.includes('vitest'));
+  Boolean(process.env.BUN_ENV === 'test') ||
+  process.argv.some((arg) => arg.includes('vitest') || arg.includes('test'));
 
 if (!isTesting) {
   startServer().catch((err) => {

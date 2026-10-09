@@ -1,6 +1,5 @@
 import { ProjectRepository } from '../../../src/domain/contracts/repository-contracts.ts';
 import { Project } from '../../../src/domain/models/index.ts';
-import { DEMO_PROJECTS } from '../../adapters/mock/mock-data.ts';
 
 export class MemoryProjectRepository implements ProjectRepository {
   private projects: Map<string, Project> = new Map();
@@ -9,30 +8,39 @@ export class MemoryProjectRepository implements ProjectRepository {
     initialData.forEach((p) => this.projects.set(p.id, { ...p }));
   }
 
-  async findAll(): Promise<Project[]> {
-    return Array.from(this.projects.values());
+  async findAll(userId?: string): Promise<Project[]> {
+    const list = Array.from(this.projects.values());
+    if (!userId) return list;
+    return list.filter((p) => !p.ownerId || p.ownerId === userId || p.ownerId === 'phase1-demo-user');
   }
 
-  async findById(id: string): Promise<Project | null> {
+  async findById(id: string, userId?: string): Promise<Project | null> {
     const proj = this.projects.get(id);
-    return proj ? { ...proj } : null;
+    if (!proj) return null;
+    if (userId && proj.ownerId && proj.ownerId !== userId && proj.ownerId !== 'phase1-demo-user') {
+      return null;
+    }
+    return { ...proj };
   }
 
-  async create(project: Omit<Project, 'schemaVersion'>): Promise<Project> {
-    const created: Project = { ...project, schemaVersion: 1 };
+  async create(project: Omit<Project, 'schemaVersion'>, userId?: string): Promise<Project> {
+    const ownerId = userId || project.ownerId || 'unknown';
+    const created: Project = { ...project, ownerId, schemaVersion: 1 };
     this.projects.set(created.id, created);
     return { ...created };
   }
 
-  async update(id: string, updates: Partial<Project>): Promise<Project | null> {
-    const existing = this.projects.get(id);
+  async update(id: string, updates: Partial<Project>, userId?: string): Promise<Project | null> {
+    const existing = await this.findById(id, userId);
     if (!existing) return null;
     const updated: Project = { ...existing, ...updates, updatedAt: new Date().toISOString() };
     this.projects.set(id, updated);
     return { ...updated };
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, userId?: string): Promise<boolean> {
+    const existing = await this.findById(id, userId);
+    if (!existing) return false;
     return this.projects.delete(id);
   }
 }

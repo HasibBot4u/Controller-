@@ -41,9 +41,6 @@ export function getClientAuthToken(): string | null {
   } catch (_e) {
     // Ignore sessionStorage errors in restricted sandboxes
   }
-  if (import.meta.env.DEV) {
-    return 'dev-preview-token';
-  }
   return null;
 }
 

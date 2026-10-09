@@ -21,6 +21,13 @@ export async function signOutUser() {
   return signOut(auth);
 }
 
+export interface FirestorePingDetail {
+  ok: boolean;
+  latencyMs: number;
+  timestamp: string;
+  error?: string;
+}
+
 // Connectivity test per skill instructions
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
@@ -31,5 +38,24 @@ export async function testFirestoreConnection(): Promise<boolean> {
       console.warn('Firestore offline or connection check failed.');
     }
     return false;
+  }
+}
+
+export async function testFirestoreConnectionDetailed(): Promise<FirestorePingDetail> {
+  const start = Date.now();
+  try {
+    await getDocFromServer(doc(db, 'system', 'connection-check'));
+    return {
+      ok: true,
+      latencyMs: Date.now() - start,
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    return {
+      ok: false,
+      latencyMs: Date.now() - start,
+      timestamp: new Date().toISOString(),
+      error: error?.message || 'Connection failed',
+    };
   }
 }

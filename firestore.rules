@@ -10,48 +10,43 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // User-scoped project workspace metadata
+    // User-scoped project metadata (Authoritative writes occur exclusively via backend server SDK)
     match /users/{userId}/projects/{projectId} {
       allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidId(projectId)
-        && request.resource.data.keys().hasAll(['id', 'name', 'ownerId', 'updatedAt', 'status'])
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isOwner(userId)
-        && request.resource.data.ownerId == resource.data.ownerId;
-      allow delete: if isOwner(userId);
+      allow write: if false;
     }
 
-    // User-scoped activity tracks
+    // User-scoped activity tracks (Authoritative writes occur exclusively via backend server SDK)
     match /users/{userId}/activities/{activityId} {
       allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidId(activityId)
-        && request.resource.data.keys().hasAll(['id', 'projectId', 'title', 'status', 'ownerId', 'updatedAt'])
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isOwner(userId)
-        && request.resource.data.ownerId == resource.data.ownerId;
-      allow delete: if isOwner(userId);
+      allow write: if false;
     }
 
-    // User-scoped approval requests
+    // User-scoped approval requests (Approvals are server-authoritative; no client-side status mutation)
     match /users/{userId}/approvals/{approvalId} {
       allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidId(approvalId)
-        && request.resource.data.keys().hasAll(['id', 'actionType', 'riskLevel', 'title', 'status', 'requestedAt']);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
+      allow write: if false;
     }
 
-    // System connection check path for testConnection
+    // User-scoped checkpoints
+    match /users/{userId}/checkpoints/{checkpointId} {
+      allow get, list: if isOwner(userId);
+      allow write: if false;
+    }
+
+    // User-scoped sessions
+    match /users/{userId}/sessions/{sessionId} {
+      allow get, list: if isOwner(userId);
+      allow write: if false;
+    }
+
+    // System connection check path for connectivity test
     match /system/{docId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if false;
     }
   }

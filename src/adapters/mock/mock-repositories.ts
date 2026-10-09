@@ -222,6 +222,11 @@ export class InMemorySessionRepository implements SessionRepository {
     return found ? { ...found } : null;
   }
 
+  async findById(id: string): Promise<ClaudeSession | null> {
+    const s = this.sessions.get(id);
+    return s ? { ...s } : null;
+  }
+
   async findAll(): Promise<ClaudeSession[]> {
     return Array.from(this.sessions.values());
   }

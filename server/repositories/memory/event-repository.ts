@@ -17,29 +17,39 @@ export class MemoryEventRepository implements EventRepository {
     });
   }
 
-  async findByActivityId(activityId: string): Promise<ActivityEvent[]> {
+  async findByActivityId(activityId: string, userId?: string): Promise<ActivityEvent[]> {
     return this.events
-      .filter((e) => e.activityId === activityId)
+      .filter((e) => {
+        if (e.activityId !== activityId) return false;
+        if (userId && e.ownerId && e.ownerId !== userId && e.ownerId !== 'phase1-demo-user') return false;
+        return true;
+      })
       .sort((a, b) => a.sequence - b.sequence);
   }
 
-  async getEventsSince(activityId: string, sinceSequence = 0): Promise<ActivityEvent[]> {
+  async getEventsSince(activityId: string, sinceSequence = 0, userId?: string): Promise<ActivityEvent[]> {
     return this.events
-      .filter((e) => e.activityId === activityId && e.sequence > sinceSequence)
+      .filter((e) => {
+        if (e.activityId !== activityId || e.sequence <= sinceSequence) return false;
+        if (userId && e.ownerId && e.ownerId !== userId && e.ownerId !== 'phase1-demo-user') return false;
+        return true;
+      })
       .sort((a, b) => a.sequence - b.sequence);
   }
 
-  async getLatestSequence(activityId: string): Promise<number> {
+  async getLatestSequence(activityId: string, _userId?: string): Promise<number> {
     return this.sequenceCounters.get(activityId) || 0;
   }
 
   async append(
-    event: Omit<ActivityEvent, 'schemaVersion' | 'sequence' | 'id'> & { id?: string }
+    event: Omit<ActivityEvent, 'schemaVersion' | 'sequence' | 'id'> & { id?: string },
+    userId?: string
   ): Promise<ActivityEvent> {
     const currentSeq = this.sequenceCounters.get(event.activityId) || 0;
     const nextSeq = currentSeq + 1;
     this.sequenceCounters.set(event.activityId, nextSeq);
 
+    const ownerId = userId || (event as any).ownerId || 'unknown';
     const newEvent: ActivityEvent = {
       schemaVersion: 1,
       id: event.id || `evt-${Date.now()}-${nextSeq}`,
@@ -48,6 +58,7 @@ export class MemoryEventRepository implements EventRepository {
       timestamp: event.timestamp || new Date().toISOString(),
       type: event.type,
       payload: event.payload || {},
+      ownerId,
     };
 
     this.events.push(newEvent);

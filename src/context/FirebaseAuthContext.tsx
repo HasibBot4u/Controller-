@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth, db, signInWithGoogle, signOutUser, testFirestoreConnection } from '../services/firebase.ts';
+import { User, onAuthStateChanged, onIdTokenChanged } from 'firebase/auth';
+import { auth, signInWithGoogle, signOutUser, testFirestoreConnection } from '../services/firebase.ts';
+import { setClientAuthToken } from '../adapters/http/http-client.ts';
 
 interface FirebaseAuthContextType {
   currentUser: User | null;
@@ -19,13 +20,21 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
   const [firestoreConnected, setFirestoreConnected] = useState<boolean>(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    // Listen to token refresh as well as sign-in / sign-out
+    const unsubscribe = onIdTokenChanged(auth, async (user) => {
       setCurrentUser(user);
       setAuthLoading(false);
       if (user) {
+        try {
+          const idToken = await user.getIdToken();
+          setClientAuthToken(idToken);
+        } catch (_tokenErr) {
+          setClientAuthToken(null);
+        }
         const connected = await testFirestoreConnection();
         setFirestoreConnected(connected);
       } else {
+        setClientAuthToken(null);
         setFirestoreConnected(false);
       }
     });

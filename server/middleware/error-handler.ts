@@ -82,11 +82,16 @@ export function errorHandler(
   const errorCode = typeof errObj.code === 'string' ? errObj.code : (statusCode === 404 ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR');
   const service = typeof errObj.service === 'string' ? errObj.service : 'control-plane-api';
 
+  const isProduction = process.env.NODE_ENV === 'production';
+  const safeMessage = statusCode >= 500 && isProduction
+    ? 'An internal server error occurred on the remote control plane'
+    : (errorMessage || 'An unexpected error occurred on the remote control plane');
+
   res.status(statusCode).json({
     success: false,
     error: {
       code: errorCode,
-      message: errorMessage || 'An unexpected error occurred on the remote control plane',
+      message: safeMessage,
       retryable: statusCode >= 500,
       service,
     },
